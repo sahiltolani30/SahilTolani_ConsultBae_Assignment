@@ -72,9 +72,10 @@ def _estimate_noise_quality(audio: AudioSegment) -> str:
     # Pseudo SNR
     snr = signal_peak_db - noise_floor_db
     
-    if snr > 20:
+    # If the background noise itself is quite loud (e.g., a loud fan > -35 dB), it shouldn't be "Clear"
+    if snr > 25 and noise_floor_db < -35:
         return "Clear"
-    elif snr > 10:
+    elif snr > 12 and noise_floor_db < -25:
         return "Moderate"
     else:
         return "Noisy"
