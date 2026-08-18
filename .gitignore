@@ -1,5 +1,5 @@
 db/*.db
-audio_app/uploads/
+audio_app/static/uploads/
 __pycache__/
 *.pyc
 .env
