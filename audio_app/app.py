@@ -73,7 +73,7 @@ def submit():
     cursor = conn.cursor()
     
     # Find candidate
-    cursor.execute('SELECT id FROM candidates WHERE normalized_phone = ?', (norm_phone,))
+    cursor.execute('SELECT id FROM candidates WHERE phone = ?', (norm_phone,))
     candidate = cursor.fetchone()
     
     if candidate:
@@ -81,7 +81,7 @@ def submit():
     else:
         # Create minimal candidate row so FK doesn't fail or leave it orphaned
         cursor.execute('''
-            INSERT INTO candidates (name, normalized_phone, sources) 
+            INSERT INTO candidates (full_name, phone, sources) 
             VALUES (?, ?, ?)
         ''', (name, norm_phone, 'audio_app'))
         candidate_id = cursor.lastrowid
