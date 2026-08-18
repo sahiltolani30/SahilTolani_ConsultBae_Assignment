@@ -2,7 +2,7 @@ import os
 import sqlite3
 import time
 from werkzeug.utils import secure_filename
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, jsonify
 from .audio_processor import extract_audio_features
 
 app = Flask(__name__)
@@ -117,6 +117,31 @@ def submissions():
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/api/candidates')
+def api_candidates():
+    """n8n reads all candidates with skills from here."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT id, full_name, skills FROM candidates WHERE skills IS NOT NULL AND skills != ''"
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/update_category', methods=['POST'])
+def api_update_category():
+    """n8n writes the LLM-generated skill_category back here."""
+    data = request.get_json()
+    candidate_id = data.get('id')
+    category = data.get('skill_category', '').strip()
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE candidates SET skill_category = ? WHERE id = ?",
+        (category, candidate_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'id': candidate_id, 'skill_category': category})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

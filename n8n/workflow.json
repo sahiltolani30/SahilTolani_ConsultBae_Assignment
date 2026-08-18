@@ -11,20 +11,22 @@
     },
     {
       "parameters": {
-        "command": "sqlite3 /Users/harshitatolani/Sahil/ConsultBae_assignmet/SahilTolani_ConsultBae_Assignment/db/consultbae.db -json \"SELECT id, full_name, skills FROM candidates WHERE skills IS NOT NULL AND skills != ''\""
+        "method": "GET",
+        "url": "http://localhost:5001/api/candidates",
+        "options": {}
       },
       "id": "cb-node-002",
       "name": "Get All Candidates",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
       "position": [400, 340]
     },
     {
       "parameters": {
-        "jsCode": "const data = JSON.parse($input.first().json.stdout);\nreturn data.map(row => ({ json: row }));"
+        "jsCode": "// Flask returns a JSON array — split it into one item per candidate\nreturn $input.first().json.map(candidate => ({ json: candidate }));"
       },
-      "id": "cb-node-002b",
-      "name": "Parse Rows",
+      "id": "cb-node-003",
+      "name": "Split Into Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [620, 340]
@@ -52,7 +54,7 @@
         "body": "={{ JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [{ role: 'system', content: 'You are a skill categorizer for a recruitment platform. Given a pipe-separated list of skills, return ONLY ONE category from: automation-heavy, web-dev, data, design, full-stack, other. Return the category word and nothing else. No punctuation.' }, { role: 'user', content: 'Skills: ' + $json.skills }], max_tokens: 10, temperature: 0 }) }}",
         "options": {}
       },
-      "id": "cb-node-003",
+      "id": "cb-node-004",
       "name": "Tag Skills with Groq LLM",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
@@ -60,9 +62,9 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.item.json.choices[0].message.content;\nconst category = raw.trim().toLowerCase().replace(/[^a-z-]/g, '');\nconst id = $('Parse Rows').item.json.id;\nreturn {\n  json: {\n    id: id,\n    skill_category: category\n  }\n};"
+        "jsCode": "const raw = $input.item.json.choices[0].message.content;\nconst category = raw.trim().toLowerCase().replace(/[^a-z-]/g, '');\nconst id = $('Split Into Items').item.json.id;\nreturn {\n  json: {\n    id: id,\n    skill_category: category\n  }\n};"
       },
-      "id": "cb-node-004",
+      "id": "cb-node-005",
       "name": "Extract Category",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -70,12 +72,27 @@
     },
     {
       "parameters": {
-        "command": "={{ `sqlite3 /Users/harshitatolani/Sahil/ConsultBae_assignmet/SahilTolani_ConsultBae_Assignment/db/consultbae.db \"UPDATE candidates SET skill_category = '${$json.skill_category}' WHERE id = ${$json.id};\"` }}"
+        "method": "POST",
+        "url": "http://localhost:5001/api/update_category",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ id: $json.id, skill_category: $json.skill_category }) }}",
+        "options": {}
       },
-      "id": "cb-node-005",
+      "id": "cb-node-006",
       "name": "Write Category to DB",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
       "position": [1280, 340]
     }
   ],
@@ -87,10 +104,10 @@
     },
     "Get All Candidates": {
       "main": [
-        [{ "node": "Parse Rows", "type": "main", "index": 0 }]
+        [{ "node": "Split Into Items", "type": "main", "index": 0 }]
       ]
     },
-    "Parse Rows": {
+    "Split Into Items": {
       "main": [
         [{ "node": "Tag Skills with Groq LLM", "type": "main", "index": 0 }]
       ]
