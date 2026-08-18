@@ -12,7 +12,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://localhost:5001/api/candidates",
+        "url": "http://127.0.0.1:5001/api/candidates",
         "options": {}
       },
       "id": "cb-node-002",
@@ -73,7 +73,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:5001/api/update_category",
+        "url": "http://127.0.0.1:5001/api/update_category",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
