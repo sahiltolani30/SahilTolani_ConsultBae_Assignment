@@ -1,13 +1,16 @@
 {
-  "name": "ConsultBae — LLM Skill Category Tagger",
+  "name": "ConsultBae \u2014 LLM Skill Category Tagger",
   "nodes": [
     {
       "parameters": {},
       "id": "cb-node-001",
-      "name": "▶ Run Tagger",
+      "name": "\u25b6 Run Tagger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [180, 340]
+      "position": [
+        180,
+        340
+      ]
     },
     {
       "parameters": {
@@ -19,17 +22,23 @@
       "name": "Get All Candidates",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [400, 340]
+      "position": [
+        400,
+        340
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Flask returns a JSON array — split it into one item per candidate\nreturn $input.first().json.map(candidate => ({ json: candidate }));"
+        "jsCode": "return $input.all();"
       },
       "id": "cb-node-003",
       "name": "Split Into Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [620, 340]
+      "position": [
+        620,
+        340
+      ]
     },
     {
       "parameters": {
@@ -58,7 +67,10 @@
       "name": "Tag Skills with Groq LLM",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [840, 340]
+      "position": [
+        840,
+        340
+      ]
     },
     {
       "parameters": {
@@ -68,7 +80,10 @@
       "name": "Extract Category",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1060, 340]
+      "position": [
+        1060,
+        340
+      ]
     },
     {
       "parameters": {
@@ -93,33 +108,66 @@
       "name": "Write Category to DB",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1280, 340]
+      "position": [
+        1280,
+        340
+      ]
     }
   ],
   "connections": {
-    "▶ Run Tagger": {
+    "\u25b6 Run Tagger": {
       "main": [
-        [{ "node": "Get All Candidates", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Get All Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Get All Candidates": {
       "main": [
-        [{ "node": "Split Into Items", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Split Into Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Split Into Items": {
       "main": [
-        [{ "node": "Tag Skills with Groq LLM", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Tag Skills with Groq LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Tag Skills with Groq LLM": {
       "main": [
-        [{ "node": "Extract Category", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Extract Category",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Extract Category": {
       "main": [
-        [{ "node": "Write Category to DB", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Write Category to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
