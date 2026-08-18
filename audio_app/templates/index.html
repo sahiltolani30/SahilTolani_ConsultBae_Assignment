@@ -75,8 +75,14 @@
         const form = document.getElementById('audioForm');
         const fileInput = document.getElementById('audio');
 
-        // Setup MediaRecorder
-        navigator.mediaDevices.getUserMedia({ audio: true })
+        // Setup MediaRecorder with raw audio (disable browser's aggressive noise suppression)
+        navigator.mediaDevices.getUserMedia({ 
+            audio: { 
+                autoGainControl: false, 
+                echoCancellation: false, 
+                noiseSuppression: false 
+            } 
+        })
             .then(stream => {
                 mediaRecorder = new MediaRecorder(stream);
                 
