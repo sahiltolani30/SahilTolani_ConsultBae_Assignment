@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConsultBae Audio App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+</head>
+<body>
+    <main class="container">
+        <nav>
+            <ul><li><strong>ConsultBae</strong></li></ul>
+            <ul>
+                <li><a href="/">Record</a></li>
+                <li><a href="/submissions">Submissions</a></li>
+            </ul>
+        </nav>
+        
+        <h2>Submit Audio Recording</h2>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <article style="background: {% if category == 'error' %}#ffcccc{% else %}#d4edda{% endif %}; color: #333;">
+                  {{ message }}
+              </article>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form id="audioForm" action="/submit" method="POST" enctype="multipart/form-data">
+            <div class="grid">
+                <label for="name">
+                    Full Name
+                    <input type="text" id="name" name="name" required placeholder="John Doe">
+                </label>
+                <label for="phone">
+                    Phone Number
+                    <input type="tel" id="phone" name="phone" required placeholder="9876543210" pattern="[0-9\+\-\s]+">
+                </label>
+            </div>
+            
+            <hr>
+            
+            <div id="recordSection">
+                <h4>🎙️ Record in Browser</h4>
+                <button type="button" id="startBtn">Start Recording</button>
+                <button type="button" id="stopBtn" class="secondary" disabled>Stop Recording</button>
+                <p id="timer" style="display:none; color: red;">Recording: <span id="timeDisplay">0</span>s</p>
+                <audio id="playback" controls style="display:none; margin-top:10px; width:100%;"></audio>
+            </div>
+            
+            <div style="text-align: center; margin: 20px 0;"><strong>OR</strong></div>
+            
+            <div id="uploadSection">
+                <h4>📁 Upload File</h4>
+                <input type="file" id="audio" name="audio" accept="audio/*">
+            </div>
+
+            <button type="submit" id="submitBtn" style="margin-top: 20px;">Submit Data</button>
+        </form>
+    </main>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        let startTime;
+        let timerInterval;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const timer = document.getElementById('timer');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const playback = document.getElementById('playback');
+        const form = document.getElementById('audioForm');
+        const fileInput = document.getElementById('audio');
+
+        // Setup MediaRecorder
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+                
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    playback.src = audioUrl;
+                    playback.style.display = 'block';
+                    
+                    // Put the blob into the file input
+                    const file = new File([audioBlob], "recording.webm", { type: 'audio/webm' });
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    fileInput.files = dataTransfer.files;
+                };
+            })
+            .catch(err => {
+                console.warn("Microphone not available:", err);
+                document.getElementById('recordSection').innerHTML = "<p>Microphone access denied or unavailable. Please use file upload.</p>";
+            });
+
+        startBtn.onclick = () => {
+            audioChunks = [];
+            mediaRecorder.start();
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            timer.style.display = 'block';
+            startTime = Date.now();
+            timerInterval = setInterval(() => {
+                timeDisplay.textContent = Math.floor((Date.now() - startTime) / 1000);
+            }, 1000);
+        };
+
+        stopBtn.onclick = () => {
+            mediaRecorder.stop();
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            clearInterval(timerInterval);
+            timer.style.display = 'none';
+        };
+
+        form.onsubmit = () => {
+            document.getElementById('submitBtn').setAttribute('aria-busy', 'true');
+        };
+    </script>
+</body>
+</html>

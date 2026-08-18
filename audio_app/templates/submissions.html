@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submissions | ConsultBae Audio App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+</head>
+<body>
+    <main class="container">
+        <nav>
+            <ul><li><strong>ConsultBae</strong></li></ul>
+            <ul>
+                <li><a href="/">Record</a></li>
+                <li><a href="/submissions">Submissions</a></li>
+            </ul>
+        </nav>
+        
+        <h2>All Submissions</h2>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <article style="background: #d4edda; color: #333;">
+                  {{ message }}
+              </article>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <figure>
+            <table role="grid">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>Playback</th>
+                        <th>Duration (s)</th>
+                        <th>SNR Quality</th>
+                        <th>Khz</th>
+                        <th>Kbps</th>
+                        <th>dBFS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in submissions %}
+                    <tr>
+                        <td>{{ sub.id }}</td>
+                        <td>{{ sub.name }}</td>
+                        <td>{{ sub.phone }}</td>
+                        <td>
+                            <audio controls style="height: 30px; width: 200px;">
+                                <source src="/uploads/{{ sub.file_path }}" type="audio/webm">
+                                <source src="/uploads/{{ sub.file_path }}" type="audio/mpeg">
+                                <source src="/uploads/{{ sub.file_path }}" type="audio/wav">
+                            </audio>
+                        </td>
+                        <td>{{ sub.duration_seconds }}</td>
+                        <td>
+                            {% if sub.noise_quality_estimate == 'Clear' %}
+                                <span style="color: green; font-weight: bold;">🟢 Clear</span>
+                            {% elif sub.noise_quality_estimate == 'Moderate' %}
+                                <span style="color: orange; font-weight: bold;">🟡 Mod</span>
+                            {% else %}
+                                <span style="color: red; font-weight: bold;">🔴 Noisy</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ sub.sample_rate_khz }}</td>
+                        <td>{{ sub.bitrate_kbps }}</td>
+                        <td>{{ sub.loudness_db }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" style="text-align: center;">No submissions yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </figure>
+    </main>
+</body>
+</html>
