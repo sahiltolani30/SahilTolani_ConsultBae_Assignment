@@ -11,21 +11,23 @@
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, full_name, skills FROM candidates WHERE skills IS NOT NULL AND skills != ''",
-        "options": {}
+        "command": "sqlite3 /Users/harshitatolani/Sahil/ConsultBae_assignmet/SahilTolani_ConsultBae_Assignment/db/consultbae.db -json \"SELECT id, full_name, skills FROM candidates WHERE skills IS NOT NULL AND skills != ''\""
       },
       "id": "cb-node-002",
       "name": "Get All Candidates",
-      "type": "n8n-nodes-base.sqlite",
+      "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [400, 340],
-      "credentials": {
-        "sqlite": {
-          "id": "REPLACE_WITH_YOUR_SQLITE_CREDENTIAL_ID",
-          "name": "ConsultBae SQLite DB"
-        }
-      }
+      "position": [400, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = JSON.parse($input.first().json.stdout);\nreturn data.map(row => ({ json: row }));"
+      },
+      "id": "cb-node-002b",
+      "name": "Parse Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 340]
     },
     {
       "parameters": {
@@ -54,35 +56,27 @@
       "name": "Tag Skills with Groq LLM",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [620, 340]
+      "position": [840, 340]
     },
     {
       "parameters": {
-        "jsCode": "// Extract LLM category response + bring back the original candidate id\nconst raw = $input.item.json.choices[0].message.content;\nconst category = raw.trim().toLowerCase().replace(/[^a-z-]/g, '');\n\n// Reference the original SQLite row for this same item\nconst id = $('Get All Candidates').item.json.id;\nconst name = $('Get All Candidates').item.json.full_name;\n\nconsole.log(`[${id}] ${name} → ${category}`);\n\nreturn {\n  json: {\n    id: id,\n    full_name: name,\n    skill_category: category\n  }\n};"
+        "jsCode": "const raw = $input.item.json.choices[0].message.content;\nconst category = raw.trim().toLowerCase().replace(/[^a-z-]/g, '');\nconst id = $('Parse Rows').item.json.id;\nreturn {\n  json: {\n    id: id,\n    skill_category: category\n  }\n};"
       },
       "id": "cb-node-004",
       "name": "Extract Category",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [840, 340]
+      "position": [1060, 340]
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE candidates SET skill_category = '{{ $json.skill_category }}' WHERE id = {{ $json.id }}",
-        "options": {}
+        "command": "={{ `sqlite3 /Users/harshitatolani/Sahil/ConsultBae_assignmet/SahilTolani_ConsultBae_Assignment/db/consultbae.db \"UPDATE candidates SET skill_category = '${$json.skill_category}' WHERE id = ${$json.id};\"` }}"
       },
       "id": "cb-node-005",
       "name": "Write Category to DB",
-      "type": "n8n-nodes-base.sqlite",
+      "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [1060, 340],
-      "credentials": {
-        "sqlite": {
-          "id": "REPLACE_WITH_YOUR_SQLITE_CREDENTIAL_ID",
-          "name": "ConsultBae SQLite DB"
-        }
-      }
+      "position": [1280, 340]
     }
   ],
   "connections": {
@@ -92,6 +86,11 @@
       ]
     },
     "Get All Candidates": {
+      "main": [
+        [{ "node": "Parse Rows", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Rows": {
       "main": [
         [{ "node": "Tag Skills with Groq LLM", "type": "main", "index": 0 }]
       ]
