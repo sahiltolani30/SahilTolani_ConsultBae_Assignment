@@ -14,12 +14,18 @@ def normalize_phone(phone: str) -> str:
     return None
 
 def normalize_email(email: str) -> str:
-    """Lowercases, trims, and removes prefixes like 'alt.'"""
+    """Lowercases, trims, and removes common alias prefixes."""
     if pd.isna(email) or not str(email).strip():
         return None
     e = str(email).strip().lower()
-    if e.startswith('alt.'):
-        e = e[4:]
+    
+    # Strip common alias prefixes
+    prefixes = ('alt.', 'old.', 'work.', 'personal.', 'new.')
+    for prefix in prefixes:
+        if e.startswith(prefix):
+            e = e[len(prefix):]
+            break # Assume only one prefix is applied
+            
     return e
 
 def normalize_city(city: str) -> str:
