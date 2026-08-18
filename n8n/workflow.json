@@ -1,16 +1,13 @@
 {
-  "name": "ConsultBae \u2014 LLM Skill Category Tagger",
+  "name": "ConsultBae — LLM Skill Category Tagger",
   "nodes": [
     {
       "parameters": {},
       "id": "cb-node-001",
-      "name": "\u25b6 Run Tagger",
+      "name": "▶ Run Tagger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [
-        180,
-        340
-      ]
+      "position": [180, 340]
     },
     {
       "parameters": {
@@ -22,10 +19,7 @@
       "name": "Get All Candidates",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        400,
-        340
-      ]
+      "position": [400, 340]
     },
     {
       "parameters": {
@@ -35,10 +29,17 @@
       "name": "Split Into Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        620,
-        340
-      ]
+      "position": [620, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wait 2.5 seconds between each item to stay under Groq's rate limit\nawait new Promise(resolve => setTimeout(resolve, 2500));\nreturn $input.all();"
+      },
+      "id": "cb-node-wait",
+      "name": "Rate Limit Delay",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 340]
     },
     {
       "parameters": {
@@ -67,10 +68,7 @@
       "name": "Tag Skills with Groq LLM",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        840,
-        340
-      ]
+      "position": [1060, 340]
     },
     {
       "parameters": {
@@ -80,10 +78,7 @@
       "name": "Extract Category",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1060,
-        340
-      ]
+      "position": [1280, 340]
     },
     {
       "parameters": {
@@ -108,66 +103,38 @@
       "name": "Write Category to DB",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        1280,
-        340
-      ]
+      "position": [1500, 340]
     }
   ],
   "connections": {
-    "\u25b6 Run Tagger": {
+    "▶ Run Tagger": {
       "main": [
-        [
-          {
-            "node": "Get All Candidates",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Get All Candidates", "type": "main", "index": 0 }]
       ]
     },
     "Get All Candidates": {
       "main": [
-        [
-          {
-            "node": "Split Into Items",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Split Into Items", "type": "main", "index": 0 }]
       ]
     },
     "Split Into Items": {
       "main": [
-        [
-          {
-            "node": "Tag Skills with Groq LLM",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Rate Limit Delay", "type": "main", "index": 0 }]
+      ]
+    },
+    "Rate Limit Delay": {
+      "main": [
+        [{ "node": "Tag Skills with Groq LLM", "type": "main", "index": 0 }]
       ]
     },
     "Tag Skills with Groq LLM": {
       "main": [
-        [
-          {
-            "node": "Extract Category",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Extract Category", "type": "main", "index": 0 }]
       ]
     },
     "Extract Category": {
       "main": [
-        [
-          {
-            "node": "Write Category to DB",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Write Category to DB", "type": "main", "index": 0 }]
       ]
     }
   },
