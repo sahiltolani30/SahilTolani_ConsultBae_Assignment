@@ -1,0 +1,114 @@
+{
+  "name": "ConsultBae — LLM Skill Category Tagger",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cb-node-001",
+      "name": "▶ Run Tagger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [180, 340]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, full_name, skills FROM candidates WHERE skills IS NOT NULL AND skills != ''",
+        "options": {}
+      },
+      "id": "cb-node-002",
+      "name": "Get All Candidates",
+      "type": "n8n-nodes-base.sqlite",
+      "typeVersion": 1,
+      "position": [400, 340],
+      "credentials": {
+        "sqlite": {
+          "id": "REPLACE_WITH_YOUR_SQLITE_CREDENTIAL_ID",
+          "name": "ConsultBae SQLite DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY_HERE"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [{ role: 'system', content: 'You are a skill categorizer for a recruitment platform. Given a pipe-separated list of skills, return ONLY ONE category from: automation-heavy, web-dev, data, design, full-stack, other. Return the category word and nothing else. No punctuation.' }, { role: 'user', content: 'Skills: ' + $json.skills }], max_tokens: 10, temperature: 0 }) }}",
+        "options": {}
+      },
+      "id": "cb-node-003",
+      "name": "Tag Skills with Groq LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [620, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract LLM category response + bring back the original candidate id\nconst raw = $input.item.json.choices[0].message.content;\nconst category = raw.trim().toLowerCase().replace(/[^a-z-]/g, '');\n\n// Reference the original SQLite row for this same item\nconst id = $('Get All Candidates').item.json.id;\nconst name = $('Get All Candidates').item.json.full_name;\n\nconsole.log(`[${id}] ${name} → ${category}`);\n\nreturn {\n  json: {\n    id: id,\n    full_name: name,\n    skill_category: category\n  }\n};"
+      },
+      "id": "cb-node-004",
+      "name": "Extract Category",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 340]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE candidates SET skill_category = '{{ $json.skill_category }}' WHERE id = {{ $json.id }}",
+        "options": {}
+      },
+      "id": "cb-node-005",
+      "name": "Write Category to DB",
+      "type": "n8n-nodes-base.sqlite",
+      "typeVersion": 1,
+      "position": [1060, 340],
+      "credentials": {
+        "sqlite": {
+          "id": "REPLACE_WITH_YOUR_SQLITE_CREDENTIAL_ID",
+          "name": "ConsultBae SQLite DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "▶ Run Tagger": {
+      "main": [
+        [{ "node": "Get All Candidates", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get All Candidates": {
+      "main": [
+        [{ "node": "Tag Skills with Groq LLM", "type": "main", "index": 0 }]
+      ]
+    },
+    "Tag Skills with Groq LLM": {
+      "main": [
+        [{ "node": "Extract Category", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Category": {
+      "main": [
+        [{ "node": "Write Category to DB", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
