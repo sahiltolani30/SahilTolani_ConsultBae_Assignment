@@ -128,6 +128,81 @@ def api_candidates():
     conn.close()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/tag_all_candidates', methods=['POST'])
+def api_tag_all_candidates():
+    """
+    n8n calls this ONCE. Flask loops through all candidates, calls Groq
+    with proper rate-limit delays, writes results back to DB, returns summary.
+    """
+    import urllib.request
+    import time
+
+    groq_api_key = request.get_json(silent=True, force=True) or {}
+    api_key = groq_api_key.get('groq_api_key', '')
+
+    if not api_key:
+        return jsonify({'error': 'groq_api_key required in request body'}), 400
+
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT id, full_name, skills FROM candidates WHERE skills IS NOT NULL AND skills != ''"
+    ).fetchall()
+    conn.close()
+
+    results = []
+    errors = []
+    GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+    VALID_CATEGORIES = {'automation-heavy', 'web-dev', 'data', 'design', 'full-stack', 'other'}
+
+    for i, row in enumerate(rows):
+        if i > 0:
+            time.sleep(2.1)  # 2.1s gap = ~28 req/min, safely under the 30 RPM limit
+
+        payload = {
+            'model': 'openai/gpt-oss-20b',
+            'messages': [
+                {
+                    'role': 'system',
+                    'content': (
+                        'You are a skill categorizer. Given pipe-separated skills, '
+                        'return ONLY ONE word from: automation-heavy, web-dev, data, '
+                        'design, full-stack, other. No punctuation, no explanation.'
+                    )
+                },
+                {'role': 'user', 'content': f"Skills: {row['skills']}"}
+            ],
+            'max_tokens': 10,
+            'temperature': 0
+        }
+
+        try:
+            body = __import__('json').dumps(payload).encode()
+            req = urllib.request.Request(GROQ_URL, data=body, headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            })
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = __import__('json').loads(resp.read())
+            raw = data['choices'][0]['message']['content']
+            category = raw.strip().lower().replace(' ', '-')
+            if category not in VALID_CATEGORIES:
+                category = 'other'
+        except Exception as e:
+            category = 'other'
+            errors.append({'id': row['id'], 'error': str(e)})
+
+        conn = get_db_connection()
+        conn.execute("UPDATE candidates SET skill_category = ? WHERE id = ?", (category, row['id']))
+        conn.commit()
+        conn.close()
+        results.append({'id': row['id'], 'full_name': row['full_name'], 'skill_category': category})
+
+    return jsonify({
+        'tagged': len(results),
+        'errors': len(errors),
+        'results': results
+    })
+
 @app.route('/api/update_category', methods=['POST'])
 def api_update_category():
     """n8n writes the LLM-generated skill_category back here."""
