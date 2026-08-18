@@ -322,31 +322,56 @@ The most interesting issues:
 
 ## 11. Stuck Log
 
-### Challenge 1 — Flask app returning 500 on every submission
+### Challenge 1 — 500 Internal Server Error on every single submission, and I couldn't see why
 
-The Flask `/submit` route was crashing with a 500 error on every single audio upload. Checked the logs and saw a SQL error — it was querying `c.name` but the `candidates` table column is actually called `full_name`. This was a simple column name mismatch but it took a few minutes to catch because Flask's default error page didn't show the full SQL traceback.
+Built the Flask app, started it, submitted audio — got a blank 500 page. Submitted again. Same 500. Checked the terminal and there was nothing useful, just "Internal Server Error". Flask's debug mode wasn't showing me the actual SQL traceback because the error was being swallowed inside an except block that only did `return "error", 500`.
 
-What I did: Added `print(e)` inside the except block temporarily to get the raw error, saw the column name, fixed it. Then moved the debug print to proper Flask error logging.
+First instinct was to check the audio file itself — maybe pydub was crashing on the WebM format. Added print statements before and after the audio processing call. Those printed fine. The file was being saved. So the crash was happening after that, during the DB write.
 
-What I rejected: I briefly considered changing the DB schema column name to `name` to match the code. That would've been wrong — the schema was already deployed and used across multiple queries. Fix the code, not the contract.
+Added `print(e)` right inside the except block. Ran it again. The actual error printed to terminal: `OperationalError: table candidates has no column named name`. I had written `SELECT c.name FROM candidates c` in the JOIN query but the column in my own schema is `c.full_name`. I had named it `full_name` during Task 1 to be more explicit, then forgotten that when writing the audio app SQL a day later.
 
-### Challenge 2 — Fan recording was being graded "Clear"
+Fixed it in `/submit`. Then went and read every other SQL query in the file top to bottom because I wasn't confident there wasn't a second one. Found the same bug in the `/submissions` view route — it was also pulling `c.name` for the table display. Fixed that too.
 
-After implementing the basic SNR check, I tested it against a real fan recording and it came back as "Clear" when it should clearly be "Noisy". The problem was that Chrome's `getUserMedia` applies noise suppression by default. That suppression dropped the noise floor to -54 dBFS during silence, making the fan sound like a quiet room to a naive peak-to-floor calculation.
+What I rejected: For about 30 seconds I considered just renaming the DB column to `name` to match the broken query. That's the wrong call — the schema is the source of truth, shared by 3 different parts of the project. Changing the schema to match a typo in app code is exactly the kind of thing that causes worse bugs later when someone queries `full_name` elsewhere and gets nothing.
 
-I disabled the browser noise suppression in JavaScript first (`noiseSuppression: false`), but that made it worse in the opposite direction. The real fix was to not rely on the noise floor at all and instead look at the *frequency content* of the audio using FFT. Fan noise concentrates above 4000 Hz. Human speech concentrates between 300–3400 Hz. That distinction is immune to whatever the browser does to the volume levels.
+---
 
-Searched: "how to detect background noise in audio python without reference signal", "spectral flatness measure noise detection", read through the WebRTC VAD source code to understand how Google does frame classification.
+### Challenge 2 — A recording with a loud fan was graded "Clear" and I couldn't understand how
 
-Rejected: Using Microsoft's DNSMOS ONNX neural network. Tested it against the actual browser recordings and it gave the clean speech recording a worse score than the fan recording because it was trained on studio WAV files and gets confused by WebM compression artifacts.
+First approach was a simple SNR: measure the RMS of the loud parts (speech), measure the RMS of the quiet parts (noise), divide. Textbook stuff. Tested it on a recording I made with my ceiling fan running. Got back "Clear".
 
-### Challenge 3 — Fan-only recording still marked Clear after the FFT
+Recorded again with the fan louder. Still "Clear". Opened the audio file in Audacity and looked at the waveform. The fan was clearly there, audible, visible in the waveform. But the noise floor during my speaking pauses was showing as -54 dBFS — nearly digital silence.
 
-After adding the FFT voice band ratio check, a fan-only recording (no speech, just loud fan) was still slipping through as "Clear" because the adaptive VAD threshold classified the top 25% of constant fan noise as "speech frames". With no real silence in the recording, the noise floor defaulted to -60 dBFS (artificially good), and the total score came out as Clear.
+That's when I realised what Chrome was doing. `getUserMedia` with default settings enables noise suppression and auto-gain control. The browser was silencing the fan during my speaking pauses so aggressively that during those moments it looked like a completely quiet room. My noise floor measurement was reading the suppressed silence, not the actual fan. The SNR came out artificially perfect.
 
-The fix was a dynamic range guard before any of the FFT logic runs: if the loudest and quietest frames are within 18 dB of each other AND the peak never goes above -20 dBFS, there's no real speech in the recording — it's constant ambient noise. That guard runs in 3 lines of code and catches the case correctly.
+I tried turning off the browser's noise suppression in JavaScript (`noiseSuppression: false, echoCancellation: false`). That actually made things worse — it now passed raw audio but my thresholds were calibrated wrong for that. Reverted that.
 
-What I found: Real speech has 25-40 dB of dynamic range because you speak and then pause. Constant fan noise has 10-15 dB of range because it never stops.
+Then I asked a different question: instead of measuring how loud the quiet bits are, what if I just look at what frequencies are present in the loud bits? Human speech lives between 300 and 3400 Hz. Fan noise concentrates above 4000 Hz as hiss. These frequency patterns are completely unaffected by whatever Chrome does to the volume.
+
+Computed a full-file FFT using numpy, measured what percentage of total energy sat in the voice band vs the hiss band. Clean speech recordings had 40%+ in voice band and under 25% in hiss. Fan noise recordings had 28% in voice band and 45%+ in hiss. That gap was clear and consistent across every test recording.
+
+Searched: "spectral flatness measure background noise detection", "webrtc vad how google detects speech frames", "ITU P.56 voice activity detection algorithm", "how to detect noise in audio without reference signal python".
+
+Rejected DNSMOS (Microsoft's pre-trained ONNX model): I implemented it, ran it against all 4 actual recordings, and it gave the clear speech recording a BAK (background quality) score of 1.35 while the recording with the fan turned on scored 2.91. Completely backwards. The model was trained on clean, uncompressed WAV files from studio microphones. Browser WebM files have compression artifacts at specific frequencies that the model mistakes for room noise. Tested and rejected — didn't just assume.
+
+---
+
+### Challenge 3 — Fan-only recording (no speech at all) was still slipping through as "Clear"
+
+After the FFT fix, most recordings were grading correctly. Then I uploaded a recording that was just the fan running with no speech at all — like someone walked away and left the mic on. It came back as "Clear".
+
+Ran a debug script that printed out the internals. The problem was in how I classified frames as "speech" vs "noise". The method was: take the 75th percentile loudness as a threshold, everything above that is speech. For a recording with no actual speech, the fan noise frames were basically all at the same volume. The 75th percentile of constant fan noise is still within 5 dB of every other frame. So the top quarter of fan frames got classified as "speech", and the rest got classified as "background noise".
+
+With the noise frames now being the quiet end of fan noise, the computed noise floor was around -45 dBFS (which looks fine). And when I ran the FFT on the "speech" frames (which were actually fan noise), the frequency profile wasn't bad enough to trigger the noise threshold — fan noise can have some mid-range frequency content. Total score came out Clear.
+
+The insight that fixed it: real speech has massive dynamic range. When you speak, your voice hits -10 to -15 dBFS. When you pause between words, the microphone drops to -40 to -50 dBFS. That's a 25 to 40 dB swing. A fan running continuously never has that swing — it sits at a constant level, maybe varying 10 to 15 dB at most.
+
+Added a guard at the top: if dynamic range is less than 18 dB AND the loudest frame never breaks -20 dBFS (no voice-level energy), return "Noisy" immediately before the FFT even runs. Three lines of code. Caught the case perfectly.
+
+Verified by printing max/min dBFS for every recording:
+- Clear speech: max -14.7 dBFS, range 36 dB
+- Fan only at 2am: max -21.2 dBFS, range 28 dB → passes the first condition, but then the FFT catches it because 45% of energy is hiss
+- Pure background (no speech): max -37.6 dBFS, range 13.4 dB → caught immediately by the guard
 
 ---
 
