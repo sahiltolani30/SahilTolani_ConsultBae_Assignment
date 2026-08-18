@@ -60,7 +60,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [{ role: 'system', content: 'You are a skill categorizer for a recruitment platform. Given a pipe-separated list of skills, return ONLY ONE category from: automation-heavy, web-dev, data, design, full-stack, other. Return the category word and nothing else. No punctuation.' }, { role: 'user', content: 'Skills: ' + $json.skills }], max_tokens: 10, temperature: 0 }) }}",
+        "body": "={{ JSON.stringify({ model: 'llama3-8b-8192', messages: [{ role: 'system', content: 'You are a skill categorizer for a recruitment platform. Given a pipe-separated list of skills, return ONLY ONE category from: automation-heavy, web-dev, data, design, full-stack, other. Return the category word and nothing else. No punctuation.' }, { role: 'user', content: 'Skills: ' + $json.skills }], max_tokens: 10, temperature: 0 }) }}",
         "options": {}
       },
       "id": "cb-node-004",
