@@ -106,7 +106,7 @@ def submit():
 def submissions():
     conn = get_db_connection()
     subs = conn.execute('''
-        SELECT s.*, c.name as candidate_name
+        SELECT s.*, c.full_name as candidate_name
         FROM audio_submissions s
         LEFT JOIN candidates c ON s.candidate_id = c.id
         ORDER BY s.submitted_at DESC
