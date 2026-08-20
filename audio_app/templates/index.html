@@ -4,86 +4,219 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ConsultBae Audio App</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap" rel="stylesheet">
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Geist', 'sans-serif'],
+                        mono: ['Geist Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer base {
+            body { @apply bg-zinc-950 text-zinc-50 antialiased min-h-[100dvh] flex flex-col; }
+        }
+        @layer utilities {
+            @keyframes pulse-ring {
+                0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+                100% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+            }
+        }
+    </style>
 </head>
 <body>
-    <main class="container">
-        <nav>
-            <ul><li><strong>ConsultBae</strong></li></ul>
-            <ul>
-                <li><a href="/">Record</a></li>
-                <li><a href="/submissions">Submissions</a></li>
-            </ul>
-        </nav>
+    <nav class="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
+        <div class="max-w-2xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="font-mono text-sm tracking-widest uppercase text-zinc-50 font-bold">
+                ConsultBae
+            </div>
+            <div class="flex gap-6 h-full">
+                <a href="/" class="text-sm font-medium h-full flex items-center border-b-2 border-emerald-500 text-zinc-50">Record</a>
+                <a href="/submissions" class="text-sm font-medium h-full flex items-center border-b-2 border-transparent text-zinc-400 hover:text-zinc-50 transition-colors">Submissions</a>
+            </div>
+        </div>
+    </nav>
+    
+    <main class="max-w-2xl mx-auto w-full px-6 py-12 flex-1">
         
-        <h2>Submit Audio Recording</h2>
+        <h2 class="text-4xl md:text-5xl tracking-tighter leading-none mb-8 font-semibold">Submit Audio</h2>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
+            <div id="flashMessages" class="mb-8 flex flex-col gap-3">
             {% for category, message in messages %}
-              <article style="background: {% if category == 'error' %}#ffcccc{% else %}#d4edda{% endif %}; color: #333;">
-                  {{ message }}
-              </article>
+              {% if category == 'error' %}
+                <div class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm flex items-center gap-3">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {{ message }}
+                </div>
+              {% else %}
+                <div class="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-3 text-sm flex items-center gap-3">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {{ message }}
+                </div>
+              {% endif %}
             {% endfor %}
+            </div>
           {% endif %}
         {% endwith %}
 
-        <form id="audioForm" action="/submit" method="POST" enctype="multipart/form-data">
-            <div class="grid">
-                <label for="name">
-                    Full Name
-                    <input type="text" id="name" name="name" required placeholder="John Doe">
-                </label>
-                <label for="phone">
-                    Phone Number
-                    <input type="tel" id="phone" name="phone" required placeholder="9876543210" pattern="[0-9\+\-\s]+">
-                </label>
+        <form id="audioForm" action="/submit" method="POST" enctype="multipart/form-data" class="flex flex-col gap-6">
+            <div class="flex flex-col gap-5 bg-zinc-900/50 border border-zinc-800/50 p-6 rounded-2xl">
+                <div class="flex flex-col gap-2">
+                    <label for="name" class="text-sm text-zinc-400 font-medium">Full Name</label>
+                    <input type="text" id="name" name="name" required placeholder="John Doe" class="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 placeholder-zinc-600 focus:border-emerald-500 focus:outline-none transition-colors w-full">
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label for="email" class="text-sm text-zinc-400 font-medium">Email Address</label>
+                    <input type="email" id="email" name="email" required placeholder="john@example.com" class="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 placeholder-zinc-600 focus:border-emerald-500 focus:outline-none transition-colors w-full">
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label for="phone" class="text-sm text-zinc-400 font-medium">Phone Number</label>
+                    <input type="tel" id="phone" name="phone" required placeholder="9876543210" pattern="[0-9\+\-\s]+" class="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 placeholder-zinc-600 focus:border-emerald-500 focus:outline-none transition-colors w-full">
+                </div>
             </div>
             
-            <hr>
-            
-            <div id="recordSection">
-                <h4>🎙️ Record in Browser</h4>
-                <button type="button" id="startBtn">Start Recording</button>
-                <button type="button" id="stopBtn" class="secondary" disabled>Stop Recording</button>
-                <p id="timer" style="display:none; color: red;">Recording: <span id="timeDisplay">0</span>s</p>
-                <audio id="playback" controls style="display:none; margin-top:10px; width:100%;"></audio>
+            <div id="recordSection" class="flex flex-col items-center bg-zinc-900/50 border border-zinc-800/50 p-8 rounded-2xl gap-6 relative">
+                <div class="text-sm text-zinc-400 font-medium uppercase tracking-wider font-mono self-start mb-2">Record Audio</div>
+                
+                <canvas id="volumeMeter" class="w-full h-16 rounded-xl hidden"></canvas>
+                
+                <div class="flex items-center justify-center gap-8 w-full">
+                    <div id="timerContainer" class="hidden flex-1 justify-end">
+                        <span id="timeDisplay" class="font-mono text-4xl text-zinc-100">0:00</span>
+                    </div>
+
+                    <button type="button" id="startBtn" class="w-20 h-20 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 transition-all flex items-center justify-center text-zinc-950 outline-none relative group">
+                        <svg class="w-8 h-8 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                        <div id="pulseRing" class="absolute inset-0 rounded-full opacity-0 pointer-events-none"></div>
+                    </button>
+                    
+                    <div id="stopContainer" class="hidden flex-1 justify-start">
+                        <button type="button" id="stopBtn" class="bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed w-14 h-14 rounded-2xl flex items-center justify-center transition-all text-red-500" disabled title="Minimum 5 seconds required">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="minTimeHint" class="text-xs text-zinc-500 hidden absolute bottom-4">Recording must be at least 5 seconds</div>
+
+                <audio id="playback" controls class="hidden w-full mt-4 rounded-lg bg-zinc-950 border border-zinc-800"></audio>
             </div>
             
-            <div style="text-align: center; margin: 20px 0;"><strong>OR</strong></div>
+            <div class="flex items-center gap-4 my-2">
+                <div class="flex-1 h-px bg-zinc-800"></div>
+                <span class="text-zinc-500 text-xs font-mono uppercase tracking-widest">or</span>
+                <div class="flex-1 h-px bg-zinc-800"></div>
+            </div>
             
-            <div id="uploadSection">
-                <h4>📁 Upload File</h4>
-                <input type="file" id="audio" name="audio" accept="audio/*">
+            <div id="uploadSection" class="relative group">
+                <input type="file" id="audio" name="audio" accept="audio/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                <div class="border-2 border-dashed border-zinc-800 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 text-center transition-colors group-hover:border-emerald-500/50 group-hover:bg-zinc-900/30">
+                    <svg class="w-8 h-8 text-zinc-500 group-hover:text-emerald-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    <div>
+                        <p class="text-sm font-medium text-zinc-200" id="uploadText">Select a file to upload</p>
+                        <p class="text-xs text-zinc-500 mt-1">WAV, MP3, WEBM up to 10MB</p>
+                    </div>
+                </div>
             </div>
 
-            <button type="submit" id="submitBtn" style="margin-top: 20px;">Submit Data</button>
+            <button type="submit" id="submitBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold py-4 rounded-xl transition-all active:scale-[0.99] flex items-center justify-center gap-2 mt-4 relative overflow-hidden group">
+                <span id="submitText">Submit Data</span>
+                <svg class="w-5 h-5 group-hover:translate-x-1 transition-transform" id="submitIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </button>
         </form>
     </main>
 
     <script>
+        const flashMessages = document.getElementById('flashMessages');
+        if (flashMessages) {
+            setTimeout(() => {
+                flashMessages.style.opacity = '0';
+                flashMessages.style.transition = 'opacity 0.7s ease';
+                setTimeout(() => flashMessages.remove(), 700);
+            }, 4000);
+        }
+
         let mediaRecorder;
         let audioChunks = [];
         let startTime;
         let timerInterval;
+        
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let animationId;
+        let mediaStream;
 
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
-        const timer = document.getElementById('timer');
+        const timerContainer = document.getElementById('timerContainer');
+        const stopContainer = document.getElementById('stopContainer');
         const timeDisplay = document.getElementById('timeDisplay');
         const playback = document.getElementById('playback');
         const form = document.getElementById('audioForm');
         const fileInput = document.getElementById('audio');
+        const uploadText = document.getElementById('uploadText');
+        const canvas = document.getElementById('volumeMeter');
+        const canvasCtx = canvas.getContext('2d');
+        const pulseRing = document.getElementById('pulseRing');
+        const minTimeHint = document.getElementById('minTimeHint');
+        const submitBtn = document.getElementById('submitBtn');
+        const submitText = document.getElementById('submitText');
+        const submitIcon = document.getElementById('submitIcon');
 
-        // Setup MediaRecorder with raw audio (disable browser's aggressive noise suppression)
-        navigator.mediaDevices.getUserMedia({ 
-            audio: { 
-                autoGainControl: false, 
-                echoCancellation: false, 
-                noiseSuppression: false 
-            } 
-        })
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadText.textContent = e.target.files[0].name;
+                uploadText.classList.add('text-emerald-400');
+            } else {
+                uploadText.textContent = 'Select a file to upload';
+                uploadText.classList.remove('text-emerald-400');
+            }
+        });
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function drawWaveform() {
+            if (!analyser) return;
+            animationId = requestAnimationFrame(drawWaveform);
+            analyser.getByteFrequencyData(dataArray);
+
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const barWidth = (canvas.width / 40) - 2;
+            let x = 0;
+
+            for (let i = 0; i < 40; i++) {
+                const barHeight = (dataArray[i * 2] / 255) * canvas.height;
+                
+                canvasCtx.fillStyle = '#10b981';
+                canvasCtx.beginPath();
+                canvasCtx.roundRect(x, canvas.height - barHeight, barWidth, Math.max(2, barHeight), 4);
+                canvasCtx.fill();
+                
+                x += barWidth + 2;
+            }
+        }
+
+        navigator.mediaDevices.getUserMedia({ audio: true })
             .then(stream => {
+                mediaStream = stream;
                 mediaRecorder = new MediaRecorder(stream);
                 
                 mediaRecorder.ondataavailable = e => {
@@ -94,42 +227,96 @@
                     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                     const audioUrl = URL.createObjectURL(audioBlob);
                     playback.src = audioUrl;
-                    playback.style.display = 'block';
+                    playback.classList.remove('hidden');
                     
-                    // Put the blob into the file input
                     const file = new File([audioBlob], "recording.webm", { type: 'audio/webm' });
                     const dataTransfer = new DataTransfer();
                     dataTransfer.items.add(file);
                     fileInput.files = dataTransfer.files;
+                    uploadText.textContent = "recording.webm (captured)";
+                    uploadText.classList.add('text-emerald-400');
                 };
             })
             .catch(err => {
                 console.warn("Microphone not available:", err);
-                document.getElementById('recordSection').innerHTML = "<p>Microphone access denied or unavailable. Please use file upload.</p>";
+                document.getElementById('recordSection').innerHTML = "<div class='text-red-400 text-sm'>Microphone access denied or unavailable. Please use file upload.</div>";
             });
 
         startBtn.onclick = () => {
+            if (!mediaRecorder) return;
             audioChunks = [];
             mediaRecorder.start();
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-            timer.style.display = 'block';
+            
+            startBtn.classList.replace('bg-emerald-500', 'bg-red-500');
+            startBtn.classList.replace('hover:bg-emerald-400', 'hover:bg-red-400');
+            startBtn.classList.replace('text-zinc-950', 'text-zinc-50');
+            pulseRing.classList.add('animate-[pulse-ring_1.5s_cubic-bezier(0.24,0,0.38,1)_infinite]');
+            
+            startBtn.style.pointerEvents = 'none';
+            stopContainer.classList.remove('hidden');
+            timerContainer.classList.remove('hidden');
+            minTimeHint.classList.remove('hidden');
+            playback.classList.add('hidden');
+            
+            canvas.classList.remove('hidden');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+            }
+            drawWaveform();
+
             startTime = Date.now();
+            timeDisplay.textContent = "0:00";
+            
             timerInterval = setInterval(() => {
-                timeDisplay.textContent = Math.floor((Date.now() - startTime) / 1000);
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                timeDisplay.textContent = formatTime(elapsed);
+                
+                if (elapsed >= 5) {
+                    stopBtn.disabled = false;
+                    minTimeHint.classList.add('hidden');
+                    stopBtn.classList.replace('text-red-500', 'text-zinc-100');
+                }
             }, 1000);
         };
 
         stopBtn.onclick = () => {
             mediaRecorder.stop();
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
             clearInterval(timerInterval);
-            timer.style.display = 'none';
+            cancelAnimationFrame(animationId);
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            startBtn.classList.replace('bg-red-500', 'bg-emerald-500');
+            startBtn.classList.replace('hover:bg-red-400', 'hover:bg-emerald-400');
+            startBtn.classList.replace('text-zinc-50', 'text-zinc-950');
+            pulseRing.classList.remove('animate-[pulse-ring_1.5s_cubic-bezier(0.24,0,0.38,1)_infinite]');
+            
+            startBtn.style.pointerEvents = 'auto';
+            stopContainer.classList.add('hidden');
+            timerContainer.classList.add('hidden');
+            canvas.classList.add('hidden');
+            minTimeHint.classList.add('hidden');
+            stopBtn.disabled = true;
+            stopBtn.classList.replace('text-zinc-100', 'text-red-500');
         };
 
         form.onsubmit = () => {
-            document.getElementById('submitBtn').setAttribute('aria-busy', 'true');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
+            submitText.textContent = "Analyzing audio...";
+            submitIcon.classList.add('hidden');
+            
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-zinc-950/50 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-300';
+            overlay.innerHTML = '<div class="w-12 h-12 border-4 border-zinc-800 border-t-emerald-500 rounded-full animate-spin"></div>';
+            document.body.appendChild(overlay);
         };
     </script>
 </body>

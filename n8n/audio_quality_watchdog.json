@@ -1,0 +1,420 @@
+{
+  "name": "ConsultBae \u2014 Audio Quality Watchdog (Task 2C)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "audio-submission",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "79be5eff-0b64-49e5-a367-bb88a607ded6",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "4810ba8e-0ded-4101-a1ad-fe7356116a96"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-api",
+              "name": "apiBaseUrl",
+              "value": "https://jump-bishop-initially-striking.trycloudflare.com",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "673b2b78-3099-4f23-b738-c9b705425011",
+      "name": "Run Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Run Config').first().json.apiBaseUrl }}/api/worker-history",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $('Webhook Trigger').first().json.body.phone }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "76c4b0e9-b3c9-4725-a814-f7f3568d3773",
+      "name": "Fetch Worker History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-noisy",
+              "leftValue": "={{ $('Webhook Trigger').first().json.body.noise_quality }}",
+              "rightValue": "Noisy",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "4d82560f-9287-48a7-88d6-770b542da698",
+      "name": "Is Noisy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { action: 'accepted', message: 'Audio quality acceptable.' } }];"
+      },
+      "id": "63aaf27d-4d56-45cf-9f82-1115ff289e8f",
+      "name": "Log Accepted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-repeat",
+              "leftValue": "={{ $json.is_repeat_offender }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "154238ef-e4e3-4532-84a5-f039a5c65a44",
+      "name": "Is Repeat Offender?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a friendly assistant helping gig workers improve their audio recordings.\n\nWorker name: {{ $('Webhook Trigger').first().json.body.name }}\nRecording duration: {{ $('Webhook Trigger').first().json.body.duration_seconds }} seconds\nThis is their noisy submission number: {{ $('Fetch Worker History').first().json.noisy_count }}\n\nWrite a short, encouraging 2-sentence message:\n- Acknowledge the submission was received\n- Give ONE practical tip to get cleaner audio next time (quieter room, closer mic, etc.)\n\nKeep it warm and brief. No greetings, no sign-off needed."
+      },
+      "id": "69b77262-2308-4c6d-a184-41c9b177d299",
+      "name": "Generate Tip Message",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1050,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "third-expanse-504110-i1"
+        },
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "137258f7-1d8d-4afd-a702-9361d18af2c1",
+      "name": "Google Vertex Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "mjFmKO7NFTUdEClj",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const workerName = $('Webhook Trigger').first().json.body.name || 'Worker';\nconst tip = $json.text || 'Tip generated';\nconsole.log(`[EMAIL SENT TO ${workerName}]: ${tip}`);\nreturn [{ json: { action: 'tip_sent', message: tip } }];"
+      },
+      "id": "b9b82392-6619-4f1e-83b3-c421d1326a49",
+      "name": "Send Tip Email (Mocked)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Run Config').first().json.apiBaseUrl }}/api/worker-flag",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "candidate_id",
+              "value": "={{ $('Webhook Trigger').first().json.body.candidate_id }}"
+            },
+            {
+              "name": "reason",
+              "value": "={{ $('Fetch Worker History').first().json.noisy_count }} noisy submissions"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "e54b3d8f-45f2-41f6-bc66-fb74b0ca6a9b",
+      "name": "Flag Worker in DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        -250
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { action: 'flagged_for_review', message: `Worker flagged in DB.` } }];"
+      },
+      "id": "3764e20e-bbab-4d91-8f6a-2be06f567dac",
+      "name": "Log Flagged",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        -250
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const action = $json.action || 'unknown';\nconst msg = $json.message || '';\nconst worker = $('Webhook Trigger').first().json.body.name || 'Unknown';\nconsole.log(`[GOOGLE SHEETS ROW ADDED]: ${new Date().toISOString()} | ${worker} | ${action} | ${msg}`);\nreturn [{ json: { success: true, logged_action: action } }];"
+      },
+      "id": "f397e361-037c-44ad-a5b8-edf140402d79",
+      "name": "Log to Google Sheets (Mocked)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -100
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Run Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Worker History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Worker History": {
+      "main": [
+        [
+          {
+            "node": "Is Noisy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Noisy?": {
+      "main": [
+        [
+          {
+            "node": "Is Repeat Offender?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Accepted": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets (Mocked)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Repeat Offender?": {
+      "main": [
+        [
+          {
+            "node": "Flag Worker in DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Tip Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Tip Message": {
+      "main": [
+        [
+          {
+            "node": "Send Tip Email (Mocked)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vertex Chat Model": {
+      "main": [
+        []
+      ],
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Tip Message",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Tip Email (Mocked)": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets (Mocked)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Worker in DB": {
+      "main": [
+        [
+          {
+            "node": "Log Flagged",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Flagged": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets (Mocked)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Google Sheets (Mocked)": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ef69334e-4aaf-4231-800a-2f3e05974b77",
+  "tags": [
+    {
+      "name": "task2c-watchdog"
+    }
+  ]
+}

@@ -185,15 +185,121 @@ Writes using `INSERT OR REPLACE` under a single transaction. Skills written to a
 ## 7. Task 2 — n8n Automation
 
 ### Objective
-Build one working automation connected to the database.
-
-### Automation Chosen
-LLM-based skill categorization: a flow that reads each candidate from `consultbae.db`, sends their skills to an LLM, and writes a skill category tag (`automation-heavy`, `web-dev`, `data`, etc.) back to the database.
-
-> **Workflow JSON:** `n8n/workflow.json`
-> *(See n8n folder for the exported workflow and setup instructions)*
+Design and implement a real-world automation workflow using n8n that is connected to our live database and performs meaningful AI-driven operations — not just a demo trigger. To go beyond the minimum requirement, I implemented **two complete, production-quality workflows**: one that processes candidates in batch using an LLM, and one that monitors live audio submissions in real-time and escalates quality issues automatically.
 
 ---
+
+### Task 2B — LLM Skill Categorization Workflow
+
+#### What Is It?
+A fully automated batch-processing pipeline that reads untagged candidate records from `consultbae.db`, sends each candidate's skills to **Google Vertex AI (Gemini 2.5 Flash)**, and writes a structured skill category label back to the database — all without any manual intervention.
+
+**Output categories:** `automation-heavy` | `web-dev` | `data` | `fullstack` | `devops` | `other`
+
+Each categorized record also stores a **confidence score** (0–1) and a **one-sentence LLM reasoning** so that a human reviewer can instantly understand why a particular tag was assigned.
+
+#### How We Built It
+
+**Step 1 — Keyword Pre-Classifier (Code Node)**
+Before calling the LLM, a JavaScript Code node runs a fast keyword-matching pass on the candidate's skills. It builds a score for each category based on known keyword lists (e.g., `react`, `vue`, `tailwind` → `web-dev`). This produces a `keywordCategory` hint and a `keywordConfidence` score that gets sent to the LLM as part of the prompt, improving accuracy and reducing token waste.
+
+**Step 2 — LLM Classification with Structured Output**
+The candidate's normalized skills plus the keyword hint are sent to **Vertex AI** via n8n's LangChain node. The LLM is given a strict JSON schema to follow (`skill_category`, `confidence`, `reasoning`) enforced by n8n's **Structured Output Parser**, which guarantees the response is always valid JSON — never freeform text that would crash the pipeline.
+
+**Step 3 — 3-Strike Retry Loop with Exponential Backoff**
+If the LLM returns a malformed response or Vertex AI rate-limits the request, the workflow does **not** crash. Instead, it routes the failure through a `Backoff 5s` wait node and retries with a fresh LLM call, up to 3 times per candidate. If all 3 attempts fail, the candidate is flagged as `needs_review: true` and queued for a dedicated retry sweep that runs after a 60-second rate-limit reset window.
+
+**Step 4 — Write Tag to Database**
+On success, the workflow makes an HTTP POST to the Flask API (`/api/candidates/{id}/tag`), which atomically writes `skill_category`, `confidence`, and `needs_review` back to SQLite.
+
+**Node Map:**
+```
+[Manual Trigger]
+       ↓
+[Run Config]               ← single node to configure apiBaseUrl and model
+       ↓
+[Fetch Untagged Candidates] → GET /api/candidates?untagged=true
+       ↓
+[Normalize Skills]         ← keyword pre-classifier (Code node)
+       ↓
+[Loop — Primary]           ← batch size = 1, processes one candidate at a time
+       ↓
+[Classify Skills 1/3]      → Vertex AI (Gemini 2.5) + Structured Output Parser
+       ↓  (on failure)
+[Backoff 5s] → [Classify Skills 2/3] → [Backoff 5s] → [Classify Skills 3/3]
+       ↓  (on success at any attempt)
+[Write Tag to DB]          → POST /api/candidates/{id}/tag
+       ↓
+[Collect Results] → [Any Failures?] → [Rate Limit Reset 60s] → [Retry Sweep]
+```
+
+> **Workflow JSON:** `n8n/skill_tagger_workflow.json`
+
+---
+
+### Task 2C — Audio Quality Watchdog
+
+#### What Is It?
+A real-time, event-driven escalation system that watches every audio submission on the worker-facing web app and automatically responds based on audio quality. It uses a **3-strike policy**: workers who repeatedly submit noisy audio are first coached via a personalized AI-generated email, then escalated for human review if the problem persists.
+
+This workflow runs completely automatically — Flask fires a webhook and n8n handles everything from there. No human clicks required.
+
+#### How We Built It
+
+**Step 1 — Webhook Trigger (Flask → n8n)**
+The Flask backend was updated to fire an HTTP POST to the n8n Cloud webhook URL every time a worker submits an audio recording. The POST body contains the worker's name, phone, candidate ID, noise quality estimate, and duration.
+
+**Step 2 — Fetch Strike History**
+n8n immediately makes an HTTP GET request back to the Flask API (`/api/worker-history?candidate_id=X`) to retrieve that specific worker's full submission history and count how many past submissions were "Noisy". This keeps n8n stateless — it never stores history itself; the database is always the single source of truth.
+
+**Step 3 — Quality Branch (IF Node)**
+An IF node checks whether the current submission is "Noisy":
+- **If NOT Noisy** → routed to the "Accepted" branch. The record is logged with status `accepted` and the workflow ends silently.
+- **If Noisy** → routed to the strike-counting branch.
+
+**Step 4 — Strike Branch (IF Repeat Offender)**
+A second IF node checks whether the worker's `noisy_count >= 3`:
+- **Strike 1 or 2 → Coaching Mode:** n8n calls **Google Vertex AI (Gemini)** with a carefully engineered prompt to generate a warm, personalized 3-sentence coaching email (e.g., "Hi Rahul, your recording was a bit noisy today — try moving to a quieter room next time."). The email is sent directly to the worker via the linked **Gmail** credential.
+- **Strike 3+ → Escalation Mode:** n8n makes an HTTP POST to the Flask API (`/api/worker-flag`), which sets `audio_flagged = 1` in the SQLite database, freezing the worker's account for human review.
+
+**Step 5 — Audit Log**
+Every execution path (accepted, tip sent, or flagged) ends at an "Audit Log" Code node that structures the full record for logging. In a production system, this connects directly to Google Sheets or a logging service.
+
+**Node Map:**
+```
+[Audio Submission Webhook]        ← Flask POSTs here on every submission
+       ↓
+[Fetch Worker History]            → GET /api/worker-history?candidate_id=X
+       ↓
+[IF Quality Check]                ← is noise_quality == "Noisy"?
+   ├── No  → [Audio Accepted] → [Set Accepted Status] → [Audit Log]
+   └── Yes ↓
+[IF Repeat Offender]              ← is noisy_count >= 3?
+   ├── Yes → [Flag Worker]        → POST /api/worker-flag
+   │          → [Set Flagged Status] → [Audit Log]
+   └── No  → [Generate Audio Tip] ← Vertex AI (Gemini) + Gmail
+              → [Send Tip Email]
+              → [Set Tip Sent Status] → [Audit Log]
+```
+
+> **Workflow JSON:** `n8n/audio_quality_watchdog.json`
+
+---
+
+### Credential Setup (One-Time)
+
+Both workflows use **Google Vertex AI**. Task 2C additionally requires a **Gmail** account linked via OAuth2. Full step-by-step instructions are in [`n8n/README.md`](n8n/README.md), but here is a quick summary:
+
+| Step | Action |
+|------|--------|
+| 1 | Go to [Google Cloud Console](https://console.cloud.google.com) → **APIs & Services → Library** → Enable **Vertex AI API** |
+| 2 | **IAM & Admin → Service Accounts** → Create account → Assign **"Vertex AI User"** role |
+| 3 | On the service account → **Keys tab → Add Key → JSON** → download the `.json` file |
+| 4 | In n8n → **Credentials → Add Credential → Google Service Account** → paste `client_email` and `private_key` from the JSON |
+| 5 | *(Task 2C only)* In n8n → **Credentials → Add Credential → Gmail OAuth2** → sign in with Gmail |
+
+---
+
 
 ## 8. Task 3 — Audio Collection App
 
@@ -417,7 +523,7 @@ All 4 test recordings classified correctly:
 ## 14. Submission
 
 - **GitHub Repository:** https://github.com/sahiltolani30/SahilTolani_ConsultBae_Assignment
-- **Demo Video:** *(link to be added)*
+- **Demo Video:** [ConsultBae_Assignment_Video.mp4](./ConsultBae_Assignment_Video.mp4)
 
 ---
 

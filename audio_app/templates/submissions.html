@@ -4,80 +4,169 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Submissions | ConsultBae Audio App</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap" rel="stylesheet">
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Geist', 'sans-serif'],
+                        mono: ['Geist Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer base {
+            body { @apply bg-zinc-950 text-zinc-50 antialiased min-h-[100dvh] flex flex-col; }
+        }
+        @layer utilities {
+            @keyframes slide-up-fade {
+                from { opacity: 0; transform: translateY(16px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .stagger-row {
+                opacity: 0;
+                animation: slide-up-fade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+        }
+    </style>
 </head>
 <body>
-    <main class="container">
-        <nav>
-            <ul><li><strong>ConsultBae</strong></li></ul>
-            <ul>
-                <li><a href="/">Record</a></li>
-                <li><a href="/submissions">Submissions</a></li>
-            </ul>
-        </nav>
+    <nav class="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
+        <div class="max-w-2xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="font-mono text-sm tracking-widest uppercase text-zinc-50 font-bold">
+                ConsultBae
+            </div>
+            <div class="flex gap-6 h-full">
+                <a href="/" class="text-sm font-medium h-full flex items-center border-b-2 border-transparent text-zinc-400 hover:text-zinc-50 transition-colors">Record</a>
+                <a href="/submissions" class="text-sm font-medium h-full flex items-center border-b-2 border-emerald-500 text-zinc-50">Submissions</a>
+            </div>
+        </div>
+    </nav>
+    
+    <main class="max-w-2xl mx-auto w-full px-6 py-12 flex-1 flex flex-col">
         
-        <h2>All Submissions</h2>
+        <h2 class="text-4xl md:text-5xl tracking-tighter leading-none font-semibold mb-8 stagger-row" style="animation-delay: 0ms">Submissions</h2>
+
+        {% set total = submissions|length %}
+        {% set clear_count = submissions | selectattr('noise_quality_estimate', 'equalto', 'Clear') | list | length %}
+        {% set clear_rate = (clear_count / total * 100)|round|int if total > 0 else 0 %}
+        {% set noisy_count = submissions | selectattr('noise_quality_estimate', 'equalto', 'Noisy') | list | length %}
+
+        {% if total > 0 %}
+        <div class="grid grid-cols-3 gap-4 mb-8 stagger-row" style="animation-delay: 60ms">
+            <div class="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex flex-col">
+                <span class="text-xs text-zinc-500 font-mono mb-1 uppercase tracking-wider">Total</span>
+                <span class="text-2xl font-bold font-mono text-zinc-100">{{ total }}</span>
+            </div>
+            <div class="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex flex-col">
+                <span class="text-xs text-zinc-500 font-mono mb-1 uppercase tracking-wider">Clear Rate</span>
+                <span class="text-2xl font-bold font-mono text-emerald-400">{{ clear_rate }}%</span>
+            </div>
+            <div class="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex flex-col">
+                <span class="text-xs text-zinc-500 font-mono mb-1 uppercase tracking-wider">Flagged</span>
+                <span class="text-2xl font-bold font-mono {% if noisy_count > 0 %}text-red-400{% else %}text-zinc-100{% endif %}">{{ noisy_count }}</span>
+            </div>
+        </div>
+        {% endif %}
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
+            <div class="mb-8 flex flex-col gap-3 stagger-row" style="animation-delay: 100ms">
             {% for category, message in messages %}
-              <article style="background: #d4edda; color: #333;">
-                  {{ message }}
-              </article>
+                <div class="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-3 text-sm flex items-center gap-3">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {{ message }}
+                </div>
             {% endfor %}
+            </div>
           {% endif %}
         {% endwith %}
 
-        <figure>
-            <table role="grid">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Phone</th>
-                        <th>Playback</th>
-                        <th>Duration (s)</th>
-                        <th>SNR Quality</th>
-                        <th>Khz</th>
-                        <th>Kbps</th>
-                        <th>dBFS</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for sub in submissions %}
-                    <tr>
-                        <td>{{ sub.id }}</td>
-                        <td>{{ sub.name }}</td>
-                        <td>{{ sub.phone }}</td>
-                        <td>
-                            <audio controls style="height: 30px; width: 200px;">
-                                <source src="/uploads/{{ sub.file_path }}" type="audio/webm">
-                                <source src="/uploads/{{ sub.file_path }}" type="audio/mpeg">
-                                <source src="/uploads/{{ sub.file_path }}" type="audio/wav">
-                            </audio>
-                        </td>
-                        <td>{{ sub.duration_seconds }}</td>
-                        <td>
+        <div class="flex flex-col gap-4">
+            {% for sub in submissions %}
+                <div class="stagger-row bg-zinc-900/50 border {% if sub.noise_quality_estimate == 'Noisy' %}border-red-900/50 bg-red-950/10{% else %}border-zinc-800/50 hover:border-zinc-700/50{% endif %} rounded-2xl p-6 flex flex-col gap-5 transition-colors group" style="animation-delay: {{ 120 + loop.index0 * 60 }}ms">
+                    
+                    <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                        <!-- User Info -->
+                        <div class="flex flex-col gap-1">
+                            <div class="flex items-center gap-3">
+                                <span class="font-medium text-zinc-100">{{ sub.name }}</span>
+                                <span class="text-xs text-zinc-600 font-mono">#{{ sub.id }}</span>
+                            </div>
+                            <div class="text-sm text-zinc-400 flex items-center gap-4">
+                                <span class="flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+                                    {{ sub.phone }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Badge -->
+                        <div>
                             {% if sub.noise_quality_estimate == 'Clear' %}
-                                <span style="color: green; font-weight: bold;">🟢 Clear</span>
+                                <div class="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full px-3 py-1 text-xs font-mono">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-400"></div> Clear
+                                </div>
                             {% elif sub.noise_quality_estimate == 'Moderate' %}
-                                <span style="color: orange; font-weight: bold;">🟡 Mod</span>
+                                <div class="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full px-3 py-1 text-xs font-mono">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-amber-400"></div> Moderate
+                                </div>
                             {% else %}
-                                <span style="color: red; font-weight: bold;">🔴 Noisy</span>
+                                <div class="inline-flex items-center gap-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-full px-3 py-1 text-xs font-mono">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></div> Noisy
+                                </div>
                             {% endif %}
-                        </td>
-                        <td>{{ sub.sample_rate_khz }}</td>
-                        <td>{{ sub.bitrate_kbps }}</td>
-                        <td>{{ sub.loudness_db }}</td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="9" style="text-align: center;">No submissions yet.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </figure>
+                        </div>
+                    </div>
+
+                    <!-- Audio Player -->
+                    <div class="w-full bg-zinc-950 rounded-xl p-2 border border-zinc-800/50 group-hover:border-zinc-700/50 transition-colors">
+                        <audio controls class="w-full h-10 rounded-lg outline-none">
+                            <source src="/uploads/{{ sub.file_path }}" type="audio/webm">
+                            <source src="/uploads/{{ sub.file_path }}" type="audio/mpeg">
+                            <source src="/uploads/{{ sub.file_path }}" type="audio/wav">
+                        </audio>
+                    </div>
+
+                    <!-- Tech Specs Row -->
+                    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-mono text-zinc-500 pt-3 border-t border-zinc-800/50">
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-400">Duration:</span> {{ sub.duration_seconds }}s
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-400">Rate:</span> {{ sub.sample_rate_khz }}kHz
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-400">Bitrate:</span> {{ sub.bitrate_kbps }}kbps
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-400">Loudness:</span> {{ sub.loudness_db }}dB
+                        </div>
+                    </div>
+
+                </div>
+            {% else %}
+                <div class="stagger-row flex flex-col items-center justify-center py-20 px-4 border-2 border-dashed border-zinc-800 rounded-2xl text-center bg-zinc-900/20" style="animation-delay: 120ms">
+                    <div class="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-zinc-800">
+                        <svg class="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                    </div>
+                    <h3 class="text-lg font-medium text-zinc-200 mb-2">No Submissions Yet</h3>
+                    <p class="text-zinc-500 text-sm mb-6 max-w-sm">Audio recordings and file uploads will appear here once submitted.</p>
+                    <a href="/" class="bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold py-2.5 px-6 rounded-xl transition-all active:scale-95 inline-flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        Record Audio
+                    </a>
+                </div>
+            {% endfor %}
+        </div>
     </main>
 </body>
 </html>

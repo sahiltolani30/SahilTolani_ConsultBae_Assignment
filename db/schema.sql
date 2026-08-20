@@ -20,6 +20,18 @@ CREATE TABLE IF NOT EXISTS candidates (
     applied_date        TEXT,               -- ISO 8601: YYYY-MM-DD
     gig_status          TEXT CHECK (gig_status IN ('Active', 'Inactive', 'Paused', NULL)),
     sources             TEXT NOT NULL,       -- "src1,src2,src3"
+    
+    -- LLM Tagging Fields (Task 2B)
+    skill_category      TEXT,
+    confidence          REAL,
+    needs_review        INTEGER DEFAULT 0,
+    tag_reasoning       TEXT,
+    tag_source          TEXT,
+    
+    -- Audio Quality Flag (Task 3)
+    audio_flagged       INTEGER DEFAULT 0,
+    audio_flag_reason   TEXT,
+    
     created_at          TEXT DEFAULT (datetime('now'))
 );
 

@@ -1,0 +1,2065 @@
+{
+  "name": "ConsultBae — LLM Skill Tagger (Task 2B)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "8366b537-cb6b-4bbc-a5f5-e2852c5362e3",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -672,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-api",
+              "name": "apiBaseUrl",
+              "value": "https://passed-boys-appraisal-airplane.trycloudflare.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg-threshold",
+              "name": "needsReviewThreshold",
+              "value": 0.6,
+              "type": "number"
+            },
+            {
+              "id": "cfg-model",
+              "name": "model",
+              "value": "gemini-2.5-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg-project",
+              "name": "projectId",
+              "value": "third-expanse-504110-i1",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1ccea91d-c4a3-41b5-b07a-edaa8f3d3faa",
+      "name": "Run Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -672,
+        304
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $(\"Run Config\").first().json.apiBaseUrl }}/api/candidates",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "untagged",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "b6a7d75f-06ec-4f2f-b8d2-d5cfa12bcce2",
+      "name": "Fetch Untagged Candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -448,
+        112
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const KEYWORD_MAP = {\n  'automation-heavy': ['n8n','zapier','make.com','rpa','workflow','ci/cd','cicd','webhook','automation'],\n  'web-dev':          ['react','vue','angular','svelte','html','css','tailwind','next.js','nextjs','frontend'],\n  'data':             ['sql','python','pandas','numpy','machine learning','deep learning','analytics','etl','data science','tensorflow','pytorch'],\n  'devops':           ['docker','kubernetes','k8s','aws','gcp','azure','linux','terraform','ansible','helm','cloud'],\n};\nconst BACKEND_KW = ['node','node.js','django','fastapi','flask','express','spring','laravel','rails','backend','graphql','rest api'];\nreturn $input.all().map((item) => {\n  const c = item.json || {};\n  let arr = [];\n  if (Array.isArray(c.skills))           arr = c.skills;\n  else if (typeof c.skills === 'string') arr = c.skills.split(/[,;|/]/);\n  arr = arr.map((s) => String(s).trim().toLowerCase()).filter(Boolean);\n  const text = arr.join(', ');\n  const scores = {};\n  for (const [cat, kws] of Object.entries(KEYWORD_MAP)) {\n    scores[cat] = kws.filter((k) => text.includes(k)).length;\n  }\n  let best = 'other', bestScore = 0;\n  for (const [cat, sc] of Object.entries(scores)) {\n    if (sc > bestScore) { bestScore = sc; best = cat; }\n  }\n  const hasWeb     = scores['web-dev'] > 0;\n  const hasBackend = scores['data'] > 0 || BACKEND_KW.some((k) => text.includes(k));\n  const keywordCategory = (hasWeb && hasBackend) ? 'fullstack' : best;\n  const total = Object.values(scores).reduce((a, b) => a + b, 0);\n  const keywordConfidence = total === 0 ? 0 : Number(Math.min(1, bestScore / total).toFixed(2));\n  return { json: { ...c, skills_normalized: text, skills_array: arr, keywordCategory, keywordConfidence } };\n});"
+      },
+      "id": "7d566f79-84ea-4fe5-9f0c-614feab2e186",
+      "name": "Normalize Skills",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nstore.primaryResults = [];\nstore.retryResults   = [];\nreturn $input.all();"
+      },
+      "id": "761746bf-35c2-4ad5-b967-55cffab50601",
+      "name": "Init Run Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1312,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "c2b0a448-2c42-4cc4-b783-ef27495f55b0",
+      "name": "Loop — Primary",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -448,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "35433d2b-c8aa-4829-8703-d73b44579be1",
+      "name": "Throttle — 1 s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -864,
+        352
+      ],
+      "webhookId": "0f08b061-0766-4c35-be7c-0b53cb5def00"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a tech recruiter assistant. Classify the skills list below into EXACTLY ONE category.\n\nSkills: {{ $json.skills_normalized }}\n\nKeyword pre-classifier hint: \"{{ $json.keywordCategory }}\" (confidence {{ $json.keywordConfidence }}). Use as a hint only — make your own judgement.\n\nCategories (pick exactly one):\n- automation-heavy : n8n, Zapier, Make, RPA, CI/CD, webhooks, workflow automation\n- web-dev          : React, Vue, Angular, HTML/CSS, TypeScript, JavaScript (frontend focus)\n- data             : SQL, Python, pandas, ML, analytics, ETL, data science\n- fullstack        : Backend + frontend combined (e.g. Django+React, Node+Vue)\n- devops           : Docker, Kubernetes, AWS, GCP, Azure, Linux, cloud infra\n- other            : Anything that does not clearly fit the above\n\nReturn a confidence between 0 and 1 and one short sentence of reasoning.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "id": "b0b39be3-ed2a-4760-b710-0001287915e5",
+      "name": "Classify Skills [1/3]",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -640,
+        496
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "third-expanse-504110-i1"
+        },
+        "options": {
+          "temperature": 0.1,
+          "thinkingBudget": 0
+        }
+      },
+      "id": "e8cfc51e-d463-4a79-8203-3b45c84d6e84",
+      "name": "Vertex AI — Primary 1/3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        688
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "jR8A7lXylVzrrd4b",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"properties\":{\"skill_category\":{\"type\":\"string\",\"enum\":[\"automation-heavy\",\"web-dev\",\"data\",\"fullstack\",\"devops\",\"other\"]},\"confidence\":{\"type\":\"number\",\"description\":\"Confidence score 0-1\"},\"reasoning\":{\"type\":\"string\",\"description\":\"One sentence explaining the choice\"}},\"required\":[\"skill_category\",\"confidence\",\"reasoning\"]}"
+      },
+      "id": "5ce25268-50b8-496c-9ba5-dcd5fec630da",
+      "name": "Output Schema — Primary 1/3",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -496,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const threshold = Number($('Run Config').first().json.needsReviewThreshold ?? 0.6);\nconst src    = $('Loop — Primary').item.json;\nconst llmOut = $input.first().json;\nconst id     = src.id ?? llmOut.id;\nconst parsed = llmOut.output;\nconst failed = !!llmOut.error || !parsed?.skill_category;\nif (failed) {\n  return [{ json: {\n    id, tagged: false,\n    skills_normalized: src.skills_normalized ?? null,\n    keywordCategory:   src.keywordCategory   ?? 'other',\n    keywordConfidence: src.keywordConfidence ?? 0,\n    keyword_hint:      src.keywordCategory   ?? null,\n    error: llmOut.error ? (llmOut.error.message ?? String(llmOut.error)) : 'no structured output',\n  }}];\n}\nconst confidence   = Number(Number(parsed.confidence ?? 0).toFixed(2));\nconst needs_review = confidence < threshold;\nreturn [{ json: {\n  id, tagged: true,\n  skill_category: parsed.skill_category, confidence,\n  reasoning:      parsed.reasoning ?? '',\n  source:         'llm', needs_review,\n  keyword_hint:      src.keywordCategory   ?? null,\n  skills_normalized: src.skills_normalized ?? null,\n  error: null,\n}}];"
+      },
+      "id": "44f72bf8-9289-4606-b786-0ef1ef9efda2",
+      "name": "Parse Result [1/3]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "p-att1",
+              "leftValue": "={{ $json.tagged }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e61c28b8-49bd-4841-b57c-85c3bcfc2db5",
+      "name": "Attempt 1 OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -304,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nif (!Array.isArray(store.primaryResults)) store.primaryResults = [];\nstore.primaryResults.push($input.first().json);\nreturn $input.all();"
+      },
+      "id": "467c74c7-57bc-4cd5-afd7-697c07d502e4",
+      "name": "Accumulate — Primary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        208
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "6d322c95-df82-48da-a19a-362f92a53b6b",
+      "name": "Backoff 5 s [1→2]",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        448
+      ],
+      "webhookId": "2389fb51-8914-4492-8048-e6208dbe11f7"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a tech recruiter assistant. Classify the skills list below into EXACTLY ONE category.\n\nSkills: {{ $json.skills_normalized }}\n\nKeyword pre-classifier hint: \"{{ $json.keywordCategory }}\" (confidence {{ $json.keywordConfidence }}). Use as a hint only — make your own judgement.\n\nCategories (pick exactly one):\n- automation-heavy : n8n, Zapier, Make, RPA, CI/CD, webhooks, workflow automation\n- web-dev          : React, Vue, Angular, HTML/CSS, TypeScript, JavaScript (frontend focus)\n- data             : SQL, Python, pandas, ML, analytics, ETL, data science\n- fullstack        : Backend + frontend combined (e.g. Django+React, Node+Vue)\n- devops           : Docker, Kubernetes, AWS, GCP, Azure, Linux, cloud infra\n- other            : Anything that does not clearly fit the above\n\nReturn a confidence between 0 and 1 and one short sentence of reasoning.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "id": "719ff6b4-84e9-446e-9819-e44a328983f7",
+      "name": "Classify Skills [2/3]",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        384,
+        448
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "third-expanse-504110-i1"
+        },
+        "options": {
+          "temperature": 0.1,
+          "thinkingBudget": 0
+        }
+      },
+      "id": "0f114967-39f4-48da-ac25-d6965f18ec6f",
+      "name": "Vertex AI — Primary 2/3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        400,
+        672
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "jR8A7lXylVzrrd4b",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"properties\":{\"skill_category\":{\"type\":\"string\",\"enum\":[\"automation-heavy\",\"web-dev\",\"data\",\"fullstack\",\"devops\",\"other\"]},\"confidence\":{\"type\":\"number\",\"description\":\"Confidence score 0-1\"},\"reasoning\":{\"type\":\"string\",\"description\":\"One sentence explaining the choice\"}},\"required\":[\"skill_category\",\"confidence\",\"reasoning\"]}"
+      },
+      "id": "2d4ee09f-fd97-485e-b5c8-bb526d8f67cb",
+      "name": "Output Schema — Primary 2/3",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const threshold = Number($('Run Config').first().json.needsReviewThreshold ?? 0.6);\nconst src    = $('Loop — Primary').item.json;\nconst llmOut = $input.first().json;\nconst id     = src.id ?? llmOut.id;\nconst parsed = llmOut.output;\nconst failed = !!llmOut.error || !parsed?.skill_category;\nif (failed) {\n  return [{ json: {\n    id, tagged: false,\n    skills_normalized: src.skills_normalized ?? null,\n    keywordCategory:   src.keywordCategory   ?? 'other',\n    keywordConfidence: src.keywordConfidence ?? 0,\n    keyword_hint:      src.keywordCategory   ?? null,\n    error: llmOut.error ? (llmOut.error.message ?? String(llmOut.error)) : 'no structured output',\n  }}];\n}\nconst confidence   = Number(Number(parsed.confidence ?? 0).toFixed(2));\nconst needs_review = confidence < threshold;\nreturn [{ json: {\n  id, tagged: true,\n  skill_category: parsed.skill_category, confidence,\n  reasoning:      parsed.reasoning ?? '',\n  source:         'llm', needs_review,\n  keyword_hint:      src.keywordCategory   ?? null,\n  skills_normalized: src.skills_normalized ?? null,\n  error: null,\n}}];"
+      },
+      "id": "e96a1fcf-30f0-4776-ba86-74734df934e9",
+      "name": "Parse Result [2/3]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "p-att2",
+              "leftValue": "={{ $json.tagged }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "78d7c98f-c7d7-4fd7-97ef-d47a6128ee5c",
+      "name": "Attempt 2 OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nif (!Array.isArray(store.primaryResults)) store.primaryResults = [];\nstore.primaryResults.push($input.first().json);\nreturn $input.all();"
+      },
+      "id": "1230b150-4c28-47f0-abd8-79110f910c22",
+      "name": "Accumulate — Primary [2]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        448
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fa7b1028-0839-44d3-a2e8-36d8fa537dfe",
+      "name": "Backoff 5 s [2→3]",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        640
+      ],
+      "webhookId": "f2965a7e-d6bf-46f6-b7d9-db7661418b4f"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a tech recruiter assistant. Classify the skills list below into EXACTLY ONE category.\n\nSkills: {{ $json.skills_normalized }}\n\nKeyword pre-classifier hint: \"{{ $json.keywordCategory }}\" (confidence {{ $json.keywordConfidence }}). Use as a hint only — make your own judgement.\n\nCategories (pick exactly one):\n- automation-heavy : n8n, Zapier, Make, RPA, CI/CD, webhooks, workflow automation\n- web-dev          : React, Vue, Angular, HTML/CSS, TypeScript, JavaScript (frontend focus)\n- data             : SQL, Python, pandas, ML, analytics, ETL, data science\n- fullstack        : Backend + frontend combined (e.g. Django+React, Node+Vue)\n- devops           : Docker, Kubernetes, AWS, GCP, Azure, Linux, cloud infra\n- other            : Anything that does not clearly fit the above\n\nReturn a confidence between 0 and 1 and one short sentence of reasoning.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "id": "2821c7d6-3f8e-4e00-966f-15f8f5273598",
+      "name": "Classify Skills [3/3]",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1408,
+        640
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "third-expanse-504110-i1"
+        },
+        "options": {
+          "temperature": 0.1,
+          "thinkingBudget": 0
+        }
+      },
+      "id": "b88380d2-22a8-4e98-85cf-82e26bc0f7e2",
+      "name": "Vertex AI — Primary 3/3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        864
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "jR8A7lXylVzrrd4b",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"properties\":{\"skill_category\":{\"type\":\"string\",\"enum\":[\"automation-heavy\",\"web-dev\",\"data\",\"fullstack\",\"devops\",\"other\"]},\"confidence\":{\"type\":\"number\",\"description\":\"Confidence score 0-1\"},\"reasoning\":{\"type\":\"string\",\"description\":\"One sentence explaining the choice\"}},\"required\":[\"skill_category\",\"confidence\",\"reasoning\"]}"
+      },
+      "id": "20a05f64-fb5f-4af5-a01c-f5b4ee09ca20",
+      "name": "Output Schema — Primary 3/3",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1552,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const threshold = Number($('Run Config').first().json.needsReviewThreshold ?? 0.6);\nconst src    = $('Loop — Primary').item.json;\nconst llmOut = $input.first().json;\nconst id     = src.id ?? llmOut.id;\nconst parsed = llmOut.output;\nconst failed = !!llmOut.error || !parsed?.skill_category;\nif (failed) {\n  return [{ json: {\n    id, tagged: false,\n    skill_category:    'other', confidence: 0,\n    reasoning:         'All 3 primary attempts failed — queued for retry sweep.',\n    source:            'llm-failed', needs_review: true,\n    keyword_hint:      src.keywordCategory   ?? null,\n    skills_normalized: src.skills_normalized ?? null,\n    error: llmOut.error ? (llmOut.error.message ?? String(llmOut.error)) : 'no structured output',\n  }}];\n}\nconst confidence   = Number(Number(parsed.confidence ?? 0).toFixed(2));\nconst needs_review = confidence < threshold;\nreturn [{ json: {\n  id, tagged: true,\n  skill_category: parsed.skill_category, confidence,\n  reasoning:      parsed.reasoning ?? '',\n  source:         'llm', needs_review,\n  keyword_hint:      src.keywordCategory   ?? null,\n  skills_normalized: src.skills_normalized ?? null,\n  error: null,\n}}];"
+      },
+      "id": "ffb5b5fd-9d11-4a27-9f69-f0bcb850cf88",
+      "name": "Parse Result [3/3]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nif (!Array.isArray(store.primaryResults)) store.primaryResults = [];\nstore.primaryResults.push($input.first().json);\nreturn $input.all();"
+      },
+      "id": "19001677-959a-4cef-b15f-768913c55355",
+      "name": "Accumulate — Primary [3]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nconst results = Array.isArray(store.primaryResults) ? store.primaryResults : [];\nstore.primaryResults = [];\nconst summary = { total: results.length, tagged: results.filter(r => r.tagged).length, failed: results.filter(r => !r.tagged).length };\nconsole.log('[Primary] pass complete — ' + JSON.stringify(summary));\nreturn results.map(r => ({ json: r }));"
+      },
+      "id": "f8eea34d-b857-4e22-bf7a-d7ccccc87bbe",
+      "name": "Collect Primary Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -864,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-tagged",
+              "leftValue": "={{ $json.tagged }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "154ff5ff-c575-4d86-8d1c-baaa0c67d84c",
+      "name": "Tagged?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        576,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Run Config').first().json.apiBaseUrl }}/api/candidates/{{ $json.id }}/tag",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "skill_category",
+              "value": "={{ $json.skill_category }}"
+            },
+            {
+              "name": "confidence",
+              "value": "={{ $json.confidence }}"
+            },
+            {
+              "name": "needs_review",
+              "value": "={{ $json.needs_review }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "677e51d0-131d-443b-ae12-271e5e8c53b4",
+      "name": "Write Tag to DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        656,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r    = $('Collect Primary Results').item.json;\nconst flag = r.needs_review ? ' [NEEDS REVIEW]' : '';\nconsole.log('[Primary] TAGGED [' + r.id + '] ' + r.skill_category + ' conf=' + r.confidence + flag);\nreturn $input.all();"
+      },
+      "id": "e573cda1-b999-4098-913e-eb9604d76431",
+      "name": "Log — Tagged",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconsole.log('[Primary] QUEUED FOR SWEEP [' + r.id + '] error: ' + (r.error || 'unknown'));\nreturn $input.all();"
+      },
+      "id": "e46a2c1a-ca1a-48f8-af03-94dc682f945d",
+      "name": "Log — Queued for Sweep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $(\"Run Config\").first().json.apiBaseUrl }}/api/candidates",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "untagged",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "ac112d51-5abb-4971-a445-8ae3eb5ad19c",
+      "name": "Fetch Still Untagged",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        -80
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().filter(i => Object.keys(i.json).length > 0);\nconsole.log('[Sweep] ' + items.length + ' candidate(s) still untagged');\nreturn [{ json: { items: items.map(i => i.json), count: items.length } }];"
+      },
+      "id": "60082288-ce78-4001-994f-5824da741389",
+      "name": "Bundle Failures",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-failures",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d371bd9b-0ac2-4e1f-b460-1fe9775f3fd9",
+      "name": "Any Failures?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        736,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": []
+        },
+        "options": {}
+      },
+      "id": "3bf8eac5-baf8-405c-9f5f-fdda50271c2e",
+      "name": "No Failures — Done",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 60
+      },
+      "id": "5cc82cad-e590-465e-837c-bdbbe802c1e9",
+      "name": "Rate Limit Reset — 60 s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        -176
+      ],
+      "webhookId": "2a3b48e3-0252-4617-9b52-1bd95da2b69a"
+    },
+    {
+      "parameters": {
+        "jsCode": "return ($input.first().json.items ?? []).map(item => ({ json: item }));"
+      },
+      "id": "33297c6b-e0da-4503-bd59-8d0ce76a6e6d",
+      "name": "Expand Failure Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const KEYWORD_MAP = {\n  'automation-heavy': ['n8n','zapier','make.com','rpa','workflow','ci/cd','cicd','webhook','automation'],\n  'web-dev':          ['react','vue','angular','svelte','html','css','tailwind','next.js','nextjs','frontend'],\n  'data':             ['sql','python','pandas','numpy','machine learning','deep learning','analytics','etl','data science','tensorflow','pytorch'],\n  'devops':           ['docker','kubernetes','k8s','aws','gcp','azure','linux','terraform','ansible','helm','cloud'],\n};\nconst BACKEND_KW = ['node','node.js','django','fastapi','flask','express','spring','laravel','rails','backend','graphql','rest api'];\nreturn $input.all().map((item) => {\n  const c = item.json || {};\n  let arr = [];\n  if (Array.isArray(c.skills))           arr = c.skills;\n  else if (typeof c.skills === 'string') arr = c.skills.split(/[,;|/]/);\n  arr = arr.map((s) => String(s).trim().toLowerCase()).filter(Boolean);\n  const text = arr.join(', ');\n  const scores = {};\n  for (const [cat, kws] of Object.entries(KEYWORD_MAP)) {\n    scores[cat] = kws.filter((k) => text.includes(k)).length;\n  }\n  let best = 'other', bestScore = 0;\n  for (const [cat, sc] of Object.entries(scores)) {\n    if (sc > bestScore) { bestScore = sc; best = cat; }\n  }\n  const hasWeb     = scores['web-dev'] > 0;\n  const hasBackend = scores['data'] > 0 || BACKEND_KW.some((k) => text.includes(k));\n  const keywordCategory = (hasWeb && hasBackend) ? 'fullstack' : best;\n  const total = Object.values(scores).reduce((a, b) => a + b, 0);\n  const keywordConfidence = total === 0 ? 0 : Number(Math.min(1, bestScore / total).toFixed(2));\n  return { json: { ...c, skills_normalized: text, skills_array: arr, keywordCategory, keywordConfidence } };\n});"
+      },
+      "id": "29d3b986-ebaf-4413-88c2-da9efa111bcc",
+      "name": "Normalize Skills (Sweep)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nstore.retryResults = [];\nreturn $input.all();"
+      },
+      "id": "aed4adfa-67b6-4d0d-82e6-7103942ab95d",
+      "name": "Init Sweep Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "7a99a083-7831-482b-b499-7dce3bbdc21c",
+      "name": "Loop — Retry",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1248,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "46ae23e8-4fc3-49df-bf31-75cb1e61dd3f",
+      "name": "Throttle — 1 s (Sweep)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2208,
+        -208
+      ],
+      "webhookId": "bb84985a-e77f-4b74-96a9-f99473733f74"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a tech recruiter assistant. Classify the skills list below into EXACTLY ONE category.\n\nSkills: {{ $json.skills_normalized }}\n\nCategories (pick exactly one):\n- automation-heavy : n8n, Zapier, Make, RPA, CI/CD, webhooks, workflow automation\n- web-dev          : React, Vue, Angular, HTML/CSS, TypeScript, JavaScript (frontend focus)\n- data             : SQL, Python, pandas, ML, analytics, ETL, data science\n- fullstack        : Backend + frontend combined (e.g. Django+React, Node+Vue)\n- devops           : Docker, Kubernetes, AWS, GCP, Azure, Linux, cloud infra\n- other            : Anything that does not clearly fit the above\n\nReturn a confidence between 0 and 1 and one short sentence of reasoning.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "id": "d490cc9c-ca83-4a53-802e-72f864d702a1",
+      "name": "Retry Classify [1/3]",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2432,
+        -208
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "third-expanse-504110-i1"
+        },
+        "options": {
+          "temperature": 0.1,
+          "thinkingBudget": 0
+        }
+      },
+      "id": "ca26c152-64c3-435f-8afd-46f224d7f47a",
+      "name": "Vertex AI — Retry 1/3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        2448,
+        16
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "jR8A7lXylVzrrd4b",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"properties\":{\"skill_category\":{\"type\":\"string\",\"enum\":[\"automation-heavy\",\"web-dev\",\"data\",\"fullstack\",\"devops\",\"other\"]},\"confidence\":{\"type\":\"number\",\"description\":\"Confidence score 0-1\"},\"reasoning\":{\"type\":\"string\",\"description\":\"One sentence explaining the choice\"}},\"required\":[\"skill_category\",\"confidence\",\"reasoning\"]}"
+      },
+      "id": "00d88e08-ed64-49a1-8278-eadfa895837e",
+      "name": "Output Schema — Retry 1/3",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2576,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const threshold = Number($('Run Config').first().json.needsReviewThreshold ?? 0.6);\nconst src    = $('Loop — Retry').item.json;\nconst llmOut = $input.first().json;\nconst id     = src.id ?? llmOut.id;\nconst parsed = llmOut.output;\nconst failed = !!llmOut.error || !parsed?.skill_category;\nif (failed) {\n  return [{ json: {\n    id, tagged: false,\n    skills_normalized: src.skills_normalized ?? null,\n    keywordCategory:   src.keywordCategory   ?? 'other',\n    keywordConfidence: src.keywordConfidence ?? 0,\n    keyword_hint:      src.keywordCategory   ?? null,\n    error: llmOut.error ? (llmOut.error.message ?? String(llmOut.error)) : 'no structured output',\n  }}];\n}\nconst confidence   = Number(Number(parsed.confidence ?? 0).toFixed(2));\nconst needs_review = confidence < threshold;\nreturn [{ json: {\n  id, tagged: true,\n  skill_category: parsed.skill_category, confidence,\n  reasoning:      parsed.reasoning ?? '',\n  source:         'llm-retry', needs_review,\n  keyword_hint:      src.keywordCategory   ?? null,\n  skills_normalized: src.skills_normalized ?? null,\n  error: null,\n}}];"
+      },
+      "id": "c863c8a9-5410-4a67-a048-1518ba253e32",
+      "name": "Parse Retry [1/3]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2784,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s-att1",
+              "leftValue": "={{ $json.tagged }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b5e54c6e-2387-4119-b728-808ca8d82375",
+      "name": "Retry Attempt 1 OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2768,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nif (!Array.isArray(store.retryResults)) store.retryResults = [];\nstore.retryResults.push($input.first().json);\nreturn $input.all();"
+      },
+      "id": "1414122b-f53a-4134-bfce-c9145219b0fa",
+      "name": "Accumulate — Sweep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3232,
+        -320
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "9a71567a-698e-4e47-99d3-6b02e5d67e45",
+      "name": "Backoff 5 s [1→2] (Sweep)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3232,
+        336
+      ],
+      "webhookId": "90d3b6e5-eb4f-4724-a9cf-21ee589f0391"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a tech recruiter assistant. Classify the skills list below into EXACTLY ONE category.\n\nSkills: {{ $json.skills_normalized }}\n\nCategories (pick exactly one):\n- automation-heavy : n8n, Zapier, Make, RPA, CI/CD, webhooks, workflow automation\n- web-dev          : React, Vue, Angular, HTML/CSS, TypeScript, JavaScript (frontend focus)\n- data             : SQL, Python, pandas, ML, analytics, ETL, data science\n- fullstack        : Backend + frontend combined (e.g. Django+React, Node+Vue)\n- devops           : Docker, Kubernetes, AWS, GCP, Azure, Linux, cloud infra\n- other            : Anything that does not clearly fit the above\n\nReturn a confidence between 0 and 1 and one short sentence of reasoning.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "id": "fc1b9ecb-7626-4ad6-b98e-ac1367f8e7c1",
+      "name": "Retry Classify [2/3]",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        3456,
+        336
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "third-expanse-504110-i1"
+        },
+        "options": {
+          "temperature": 0.1,
+          "thinkingBudget": 0
+        }
+      },
+      "id": "bd78f05b-be4c-4488-8600-4085078af8fb",
+      "name": "Vertex AI — Retry 2/3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        3472,
+        560
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "jR8A7lXylVzrrd4b",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"properties\":{\"skill_category\":{\"type\":\"string\",\"enum\":[\"automation-heavy\",\"web-dev\",\"data\",\"fullstack\",\"devops\",\"other\"]},\"confidence\":{\"type\":\"number\",\"description\":\"Confidence score 0-1\"},\"reasoning\":{\"type\":\"string\",\"description\":\"One sentence explaining the choice\"}},\"required\":[\"skill_category\",\"confidence\",\"reasoning\"]}"
+      },
+      "id": "eef42b8a-80fc-412a-ab96-114671af81aa",
+      "name": "Output Schema — Retry 2/3",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        3600,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const threshold = Number($('Run Config').first().json.needsReviewThreshold ?? 0.6);\nconst src    = $('Loop — Retry').item.json;\nconst llmOut = $input.first().json;\nconst id     = src.id ?? llmOut.id;\nconst parsed = llmOut.output;\nconst failed = !!llmOut.error || !parsed?.skill_category;\nif (failed) {\n  return [{ json: {\n    id, tagged: false,\n    skills_normalized: src.skills_normalized ?? null,\n    keywordCategory:   src.keywordCategory   ?? 'other',\n    keywordConfidence: src.keywordConfidence ?? 0,\n    keyword_hint:      src.keywordCategory   ?? null,\n    error: llmOut.error ? (llmOut.error.message ?? String(llmOut.error)) : 'no structured output',\n  }}];\n}\nconst confidence   = Number(Number(parsed.confidence ?? 0).toFixed(2));\nconst needs_review = confidence < threshold;\nreturn [{ json: {\n  id, tagged: true,\n  skill_category: parsed.skill_category, confidence,\n  reasoning:      parsed.reasoning ?? '',\n  source:         'llm-retry', needs_review,\n  keyword_hint:      src.keywordCategory   ?? null,\n  skills_normalized: src.skills_normalized ?? null,\n  error: null,\n}}];"
+      },
+      "id": "53c768ac-23ce-4d3f-a4d8-412ba1b1725b",
+      "name": "Parse Retry [2/3]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3808,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s-att2",
+              "leftValue": "={{ $json.tagged }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "54e5baf9-1804-40da-beb8-cf75626189b6",
+      "name": "Retry Attempt 2 OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3792,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nif (!Array.isArray(store.retryResults)) store.retryResults = [];\nstore.retryResults.push($input.first().json);\nreturn $input.all();"
+      },
+      "id": "9e675229-7282-4d05-869a-270a0bbccc0f",
+      "name": "Accumulate — Sweep [2]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4256,
+        448
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2ecf714c-8b0b-4f5b-a936-6af131c3ae96",
+      "name": "Backoff 5 s [2→3] (Sweep)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4256,
+        640
+      ],
+      "webhookId": "a63ee0f4-b523-43ec-905c-8ccdbd9094ae"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a tech recruiter assistant. Classify the skills list below into EXACTLY ONE category.\n\nSkills: {{ $json.skills_normalized }}\n\nCategories (pick exactly one):\n- automation-heavy : n8n, Zapier, Make, RPA, CI/CD, webhooks, workflow automation\n- web-dev          : React, Vue, Angular, HTML/CSS, TypeScript, JavaScript (frontend focus)\n- data             : SQL, Python, pandas, ML, analytics, ETL, data science\n- fullstack        : Backend + frontend combined (e.g. Django+React, Node+Vue)\n- devops           : Docker, Kubernetes, AWS, GCP, Azure, Linux, cloud infra\n- other            : Anything that does not clearly fit the above\n\nReturn a confidence between 0 and 1 and one short sentence of reasoning.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "id": "579b3ec2-7861-4c5b-ac44-088bc5f31fb4",
+      "name": "Retry Classify [3/3]",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        4480,
+        640
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "third-expanse-504110-i1"
+        },
+        "options": {
+          "temperature": 0.1,
+          "thinkingBudget": 0
+        }
+      },
+      "id": "beaa3fef-bf58-417b-8b31-64421f29bd45",
+      "name": "Vertex AI — Retry 3/3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        4496,
+        864
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "jR8A7lXylVzrrd4b",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"properties\":{\"skill_category\":{\"type\":\"string\",\"enum\":[\"automation-heavy\",\"web-dev\",\"data\",\"fullstack\",\"devops\",\"other\"]},\"confidence\":{\"type\":\"number\",\"description\":\"Confidence score 0-1\"},\"reasoning\":{\"type\":\"string\",\"description\":\"One sentence explaining the choice\"}},\"required\":[\"skill_category\",\"confidence\",\"reasoning\"]}"
+      },
+      "id": "4d069140-7d49-4a2a-aaad-e31c88086f63",
+      "name": "Output Schema — Retry 3/3",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        4624,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const threshold = Number($('Run Config').first().json.needsReviewThreshold ?? 0.6);\nconst src    = $('Loop — Retry').item.json;\nconst llmOut = $input.first().json;\nconst id     = src.id ?? llmOut.id;\nconst parsed = llmOut.output;\nconst failed = !!llmOut.error || !parsed?.skill_category;\nif (failed) {\n  return [{ json: {\n    id, tagged: false,\n    skill_category:    'other', confidence: 0,\n    reasoning:         'All retry attempts exhausted — will retry on next run.',\n    source:            'llm-retry-failed', needs_review: true,\n    keyword_hint:      src.keywordCategory   ?? null,\n    skills_normalized: src.skills_normalized ?? null,\n    error: llmOut.error ? (llmOut.error.message ?? String(llmOut.error)) : 'no structured output',\n  }}];\n}\nconst confidence   = Number(Number(parsed.confidence ?? 0).toFixed(2));\nconst needs_review = confidence < threshold;\nreturn [{ json: {\n  id, tagged: true,\n  skill_category: parsed.skill_category, confidence,\n  reasoning:      parsed.reasoning ?? '',\n  source:         'llm-retry', needs_review,\n  keyword_hint:      src.keywordCategory   ?? null,\n  skills_normalized: src.skills_normalized ?? null,\n  error: null,\n}}];"
+      },
+      "id": "f2cbf456-41f5-450a-b562-436b25b297b1",
+      "name": "Parse Retry [3/3]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4832,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nif (!Array.isArray(store.retryResults)) store.retryResults = [];\nstore.retryResults.push($input.first().json);\nreturn $input.all();"
+      },
+      "id": "0505b7ce-85ac-4b31-bd62-0e6dc2657b74",
+      "name": "Accumulate — Sweep [3]",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5056,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nconst results = Array.isArray(store.retryResults) ? store.retryResults : [];\nstore.retryResults = [];\nconst summary = { total: results.length, tagged: results.filter(r => r.tagged).length, failed: results.filter(r => !r.tagged).length };\nconsole.log('[Sweep] complete — ' + JSON.stringify(summary));\nreturn results.map(r => ({ json: r }));"
+      },
+      "id": "dae3f1e3-3194-44e8-8e63-9dece3e350ed",
+      "name": "Collect Sweep Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        -544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "retry-is-tagged",
+              "leftValue": "={{ $json.tagged }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9b4fcf05-202e-4aa2-a46f-45561b90eb57",
+      "name": "Sweep Tagged?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2496,
+        -544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Run Config').first().json.apiBaseUrl }}/api/candidates/{{ $json.id }}/tag",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "skill_category",
+              "value": "={{ $json.skill_category }}"
+            },
+            {
+              "name": "confidence",
+              "value": "={{ $json.confidence }}"
+            },
+            {
+              "name": "needs_review",
+              "value": "={{ $json.needs_review }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "14c7bdba-7b19-42b7-8e0d-a1d86385492d",
+      "name": "Write Tag to DB (Sweep)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2784,
+        -640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r    = $('Collect Sweep Results').item.json;\nconst flag = r.needs_review ? ' [NEEDS REVIEW]' : '';\nconsole.log('[Sweep] TAGGED [' + r.id + '] ' + r.skill_category + ' conf=' + r.confidence + flag);\nreturn $input.all();"
+      },
+      "id": "cd1f85c1-cf35-46e6-89b0-1e384c44b10b",
+      "name": "Log — Sweep Tagged",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3008,
+        -640
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": []
+        },
+        "options": {}
+      },
+      "id": "e2330ddf-8a7e-412c-b499-47f8baac4c63",
+      "name": "All Tagged — Done",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1024,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconsole.log('[Sweep] PERM FAIL [' + r.id + '] 6 attempts exhausted — retrying next run. error: ' + (r.error || 'unknown'));\nreturn $input.all();"
+      },
+      "id": "f5e3e4e2-fc00-4551-80af-a612ea290e9f",
+      "name": "Log — Permanent Fail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2784,
+        -448
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Run Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Untagged Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Untagged Candidates": {
+      "main": [
+        [
+          {
+            "node": "Normalize Skills",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Skills": {
+      "main": [
+        [
+          {
+            "node": "Init Run Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Run Data": {
+      "main": [
+        [
+          {
+            "node": "Loop — Primary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop — Primary": {
+      "main": [
+        [
+          {
+            "node": "Collect Primary Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Throttle — 1 s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Throttle — 1 s": {
+      "main": [
+        [
+          {
+            "node": "Classify Skills [1/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Skills [1/3]": {
+      "main": [
+        [
+          {
+            "node": "Parse Result [1/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vertex AI — Primary 1/3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify Skills [1/3]",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Schema — Primary 1/3": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Classify Skills [1/3]",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Result [1/3]": {
+      "main": [
+        [
+          {
+            "node": "Attempt 1 OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attempt 1 OK?": {
+      "main": [
+        [
+          {
+            "node": "Accumulate — Primary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Backoff 5 s [1→2]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate — Primary": {
+      "main": [
+        [
+          {
+            "node": "Loop — Primary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backoff 5 s [1→2]": {
+      "main": [
+        [
+          {
+            "node": "Classify Skills [2/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Skills [2/3]": {
+      "main": [
+        [
+          {
+            "node": "Parse Result [2/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vertex AI — Primary 2/3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify Skills [2/3]",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Schema — Primary 2/3": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Classify Skills [2/3]",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Result [2/3]": {
+      "main": [
+        [
+          {
+            "node": "Attempt 2 OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attempt 2 OK?": {
+      "main": [
+        [
+          {
+            "node": "Accumulate — Primary [2]",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Backoff 5 s [2→3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate — Primary [2]": {
+      "main": [
+        [
+          {
+            "node": "Loop — Primary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backoff 5 s [2→3]": {
+      "main": [
+        [
+          {
+            "node": "Classify Skills [3/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Skills [3/3]": {
+      "main": [
+        [
+          {
+            "node": "Parse Result [3/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vertex AI — Primary 3/3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify Skills [3/3]",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Schema — Primary 3/3": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Classify Skills [3/3]",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Result [3/3]": {
+      "main": [
+        [
+          {
+            "node": "Accumulate — Primary [3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate — Primary [3]": {
+      "main": [
+        [
+          {
+            "node": "Loop — Primary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Primary Results": {
+      "main": [
+        [
+          {
+            "node": "Tagged?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tagged?": {
+      "main": [
+        [
+          {
+            "node": "Write Tag to DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log — Queued for Sweep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Tag to DB": {
+      "main": [
+        [
+          {
+            "node": "Log — Tagged",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log — Tagged": {
+      "main": [
+        [
+          {
+            "node": "Fetch Still Untagged",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Still Untagged": {
+      "main": [
+        [
+          {
+            "node": "Bundle Failures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bundle Failures": {
+      "main": [
+        [
+          {
+            "node": "Any Failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Failures?": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Reset — 60 s",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Failures — Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Reset — 60 s": {
+      "main": [
+        [
+          {
+            "node": "Expand Failure Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Failure Items": {
+      "main": [
+        [
+          {
+            "node": "Normalize Skills (Sweep)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Skills (Sweep)": {
+      "main": [
+        [
+          {
+            "node": "Init Sweep Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Sweep Data": {
+      "main": [
+        [
+          {
+            "node": "Loop — Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop — Retry": {
+      "main": [
+        [
+          {
+            "node": "Collect Sweep Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Throttle — 1 s (Sweep)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Throttle — 1 s (Sweep)": {
+      "main": [
+        [
+          {
+            "node": "Retry Classify [1/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Classify [1/3]": {
+      "main": [
+        [
+          {
+            "node": "Parse Retry [1/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vertex AI — Retry 1/3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Retry Classify [1/3]",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Schema — Retry 1/3": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Retry Classify [1/3]",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Retry [1/3]": {
+      "main": [
+        [
+          {
+            "node": "Retry Attempt 1 OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Attempt 1 OK?": {
+      "main": [
+        [
+          {
+            "node": "Accumulate — Sweep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Backoff 5 s [1→2] (Sweep)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate — Sweep": {
+      "main": [
+        [
+          {
+            "node": "Loop — Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backoff 5 s [1→2] (Sweep)": {
+      "main": [
+        [
+          {
+            "node": "Retry Classify [2/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Classify [2/3]": {
+      "main": [
+        [
+          {
+            "node": "Parse Retry [2/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vertex AI — Retry 2/3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Retry Classify [2/3]",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Schema — Retry 2/3": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Retry Classify [2/3]",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Retry [2/3]": {
+      "main": [
+        [
+          {
+            "node": "Retry Attempt 2 OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Attempt 2 OK?": {
+      "main": [
+        [
+          {
+            "node": "Accumulate — Sweep [2]",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Backoff 5 s [2→3] (Sweep)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate — Sweep [2]": {
+      "main": [
+        [
+          {
+            "node": "Loop — Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backoff 5 s [2→3] (Sweep)": {
+      "main": [
+        [
+          {
+            "node": "Retry Classify [3/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Classify [3/3]": {
+      "main": [
+        [
+          {
+            "node": "Parse Retry [3/3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vertex AI — Retry 3/3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Retry Classify [3/3]",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Schema — Retry 3/3": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Retry Classify [3/3]",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Retry [3/3]": {
+      "main": [
+        [
+          {
+            "node": "Accumulate — Sweep [3]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate — Sweep [3]": {
+      "main": [
+        [
+          {
+            "node": "Loop — Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Sweep Results": {
+      "main": [
+        [
+          {
+            "node": "Sweep Tagged?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sweep Tagged?": {
+      "main": [
+        [
+          {
+            "node": "Write Tag to DB (Sweep)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log — Permanent Fail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Tag to DB (Sweep)": {
+      "main": [
+        [
+          {
+            "node": "Log — Sweep Tagged",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log — Sweep Tagged": {
+      "main": [
+        [
+          {
+            "node": "All Tagged — Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "93963b50-0faa-46e9-bf8b-de9e879c85b6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7b2a9ee285e69d8e0e0c9b84a69372826a4084b5d21afd9ce12d8f45ba1430ef"
+  },
+  "nodeGroups": [
+    {
+      "id": "0ee0841d-eef6-4d47-8240-23f115e7d988",
+      "name": "① Ingest",
+      "nodeIds": [
+        "1ccea91d-c4a3-41b5-b07a-edaa8f3d3faa",
+        "b6a7d75f-06ec-4f2f-b8d2-d5cfa12bcce2",
+        "7d566f79-84ea-4fe5-9f0c-614feab2e186",
+        "761746bf-35c2-4ad5-b967-55cffab50601"
+      ],
+      "description": "Config, fetch untagged candidates, normalise skill strings, compute keyword hints, reset global result stores."
+    },
+    {
+      "id": "54f080b6-257c-4cef-a55a-ed01b1447d86",
+      "name": "③ Collect & Write Primary Results",
+      "nodeIds": [
+        "f8eea34d-b857-4e22-bf7a-d7ccccc87bbe",
+        "154ff5ff-c575-4d86-8d1c-baaa0c67d84c",
+        "677e51d0-131d-443b-ae12-271e5e8c53b4",
+        "e573cda1-b999-4098-913e-eb9604d76431",
+        "e46a2c1a-ca1a-48f8-af03-94dc682f945d"
+      ],
+      "description": "Read primary results from store, bulk-write tagged items to API, log failures queued for the retry sweep."
+    },
+    {
+      "id": "8a0092aa-3402-43d5-ad95-63da73cc0dbe",
+      "name": "④ Fetch Remaining Failures",
+      "nodeIds": [
+        "ac112d51-5abb-4971-a445-8ae3eb5ad19c",
+        "60082288-ce78-4001-994f-5824da741389"
+      ],
+      "description": "Re-fetch still-untagged candidates from API after the primary write and bundle them for the failure-count gate."
+    },
+    {
+      "id": "63fbb20d-d3e6-42a8-8adc-ca2e424ad511",
+      "name": "⑤ Rate Limit Reset + Sweep Prep",
+      "nodeIds": [
+        "5cc82cad-e590-465e-837c-bdbbe802c1e9",
+        "33297c6b-e0da-4503-bd59-8d0ce76a6e6d",
+        "29d3b986-ebaf-4413-88c2-da9efa111bcc",
+        "aed4adfa-67b6-4d0d-82e6-7103942ab95d"
+      ],
+      "description": "60 s Vertex AI quota cool-down, then expand and re-normalise failed candidates ready for the retry loop."
+    },
+    {
+      "id": "6cf5327c-8d77-46fc-967c-f4d502b08fa0",
+      "name": "⑦ Collect & Write Sweep Results",
+      "nodeIds": [
+        "dae3f1e3-3194-44e8-8e63-9dece3e350ed",
+        "9b4fcf05-202e-4aa2-a46f-45561b90eb57",
+        "14c7bdba-7b19-42b7-8e0d-a1d86385492d",
+        "cd1f85c1-cf35-46e6-89b0-1e384c44b10b",
+        "e2330ddf-8a7e-412c-b499-47f8baac4c63",
+        "f5e3e4e2-fc00-4551-80af-a612ea290e9f"
+      ],
+      "description": "Read retry-sweep results from store, bulk-write newly-tagged items to API. Permanently-failed items logged for the next run."
+    }
+  ],
+  "id": "XJz6vGAWYwzlLCEL",
+  "tags": [
+    {
+      "updatedAt": "2026-08-19T18:49:46.644Z",
+      "createdAt": "2026-08-19T18:49:46.644Z",
+      "id": "KmaFOcKpYjiN7yTV",
+      "name": "task2b-skill-tagger"
+    }
+  ]
+}
